@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Физика: интерактивная модель</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#6b6b6b;--line:#d8d8d8;--acc:#1A4FA0;--bg:#fbfbf9}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);min-height:100vh;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center}
+  #wrap{width:100%;max-width:760px;padding:16px}
+  h1{font-size:17px;font-weight:600;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+  #cv{width:100%;aspect-ratio:1/0.62;display:block;background:#fff;
+      border:1px solid var(--line);border-radius:10px}
+  .panel{margin-top:12px;background:#fff;border:1px solid var(--line);
+         border-radius:10px;padding:13px 15px}
+  .play{display:flex;align-items:center;gap:11px}
+  button{font:inherit;font-size:14px;padding:6px 14px;border:1px solid var(--line);
+         background:#fff;border-radius:7px;cursor:pointer;white-space:nowrap}
+  button:hover{background:#f2f2ef}
+  button.go{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+  button.go:hover{background:#15407f}
+  .par{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+  .par label{width:190px;font-size:14px;white-space:nowrap}
+  .par label b{font-weight:600}
+  .par input{flex:1;min-width:110px;accent-color:var(--acc)}
+  .par output{width:74px;text-align:right;font-variant-numeric:tabular-nums;
+              font-size:14px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td{padding:6px 0;border-bottom:1px solid #eeeeeb;vertical-align:baseline}
+  td.n{color:var(--muted);width:34%;padding-right:10px}
+  td.f{font-variant-numeric:tabular-nums}
+  .sym{color:var(--ink)}
+  .step{color:var(--muted)}
+  .res{color:var(--acc);font-weight:600}
+  .note{margin-top:9px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1 id="h1"></h1>
+  <p class="sub" id="sub"></p>
+  <canvas id="cv"></canvas>
+
+  <div class="panel play" id="playbar">
+    <button class="go" id="go">▶︎ Пуск</button>
+    <button id="rew">⟲ Сброс</button>
+    <input type="range" id="t" min="0" step="0.01" style="flex:1;accent-color:#1A4FA0">
+    <output id="ot"></output>
+  </div>
+
+  <div class="panel" id="params"></div>
+
+  <div class="panel">
+    <table id="formulas"></table>
+    <div class="note" id="note"></div>
+  </div>
+</div>
+
+<script>
+/* ==================================================================
+   БЛОК ЗАДАЧИ — меняется от задачи к задаче.
+   Ниже, после пометки ДВИЖОК, ничего править не нужно.
+   ================================================================== */
+
+const TITLE = "Свободный полёт и подъём по наклонной плоскости";
+const SUB   = "Два одинаковых тела с одной и той же скоростью v₀ под углом α: одно летит свободно, другое скользит вверх по гладкой наклонной под тем же углом α.";
+const NOTE  = "Трением пренебрегаем. Высота на наклонной h₂ = v₀²/2g не зависит от угла (энергия целиком переходит в потенциальную), а высота свободного полёта h₁ = v₀²sin²α/2g зависит от sin²α ≤ 1. Поэтому h₂ ≥ h₁ всегда, и тело на наклонной поднимается выше (кроме α = 90°, где высоты совпадают).";
+
+// Постоянные: подставляются в формулы наравне с параметрами.
+const CONST = { g: 10 };
+
+// Параметры задачи. key — имя в коде, sym — как выглядит в формулах.
+const PARAMS = [
+  { key:"v0", sym:"v₀", label:"начальная скорость", min:5,  max:15, step:1, val:12, unit:"м/с" },
+  { key:"a",  sym:"α",  label:"угол к горизонту",    min:25, max:75, step:1, val:30, unit:"°"   },
+];
+
+// Время: null — если анимации нет и нужна только статичная схема.
+const TIME = { max: 4.0, unit: "с", label: "t" };
+
+// Область рисования в физических координатах (метры), ось y вверх.
+const VIEW = { x0:-1.5, x1:27, y0:-1.5, y1:13.5 };
+
+// Всё, что вычисляется из параметров. Возвращает объект.
+function derive(p){
+  const rad = p.a * Math.PI/180;
+  const sin = Math.sin(rad), cos = Math.cos(rad);
+  const g = CONST.g;
+
+  const t1 = p.v0*sin/g;                    // время подъёма при свободном полёте
+  const h1 = p.v0*p.v0*sin*sin/(2*g);        // высота свободного полёта
+
+  const t2 = p.v0/(g*sin);                   // время подъёма по наклонной (до остановки)
+  const h2 = p.v0*p.v0/(2*g);                // высота на наклонной (не зависит от α)
+  const s2max = h2/sin;                      // путь вдоль наклонной до остановки
+
+  return {
+    rad, sin, cos, t1, h1, t2, h2, s2max,
+    proj: t => {
+      const tp = Math.min(t, t1);
+      return { x: p.v0*cos*tp, y: p.v0*sin*tp - g*tp*tp/2, done: t >= t1 };
+    },
+    incline: t => {
+      const ti = Math.min(t, t2);
+      const s = p.v0*ti - g*sin*ti*ti/2;
+      return { x: s*cos, y: s*sin, done: t >= t2 };
+    },
+  };
+}
+
+// Формулы. expr — символьный вид, val — число, unit — единица.
+// Движок сам подставит текущие значения символов в expr.
+function formulas(p, d){
+  return [
+    { name:"Высота свободного полёта",  expr:"v₀²·sin²α / (2·g)", val:d.h1, unit:"м" },
+    { name:"Высота на наклонной",       expr:"v₀² / (2·g)",       val:d.h2, unit:"м" },
+    { name:"Во сколько раз выше h₂",    expr:"1 / sin²α",         val:d.h2/d.h1, unit:"раз" },
+  ];
+}
+
+// Сцена: список примитивов в физических координатах.
+function scene(p, d, t){
+  const TOP = [d.s2max*d.cos, d.s2max*d.sin];
+  const foot = [TOP[0], 0];
+  const proj = d.proj(t), inc = d.incline(t);
+
+  // дугообразная траектория свободного полёта (статичный контур для наглядности)
+  const flight = [];
+  const n = 28;
+  for (let i = 0; i <= n; i++){
+    const tt = (2*d.t1) * i/n;
+    flight.push([p.v0*d.cos*tt, p.v0*d.sin*tt - CONST.g*tt*tt/2]);
+  }
+
+  return [
+    {type:"line", a:[VIEW.x0,0], b:[VIEW.x1,0], stroke:"#9a968c"},
+
+    {type:"line", a:[VIEW.x0,d.h1], b:[VIEW.x1,d.h1], stroke:"#C2453D", dash:[5,4], width:1.2},
+    {type:"line", a:[VIEW.x0,d.h2], b:[VIEW.x1,d.h2], stroke:"#1A4FA0", dash:[5,4], width:1.2},
+    {type:"text", at:[VIEW.x1-3.0, d.h1+0.55], text:`h₁ = ${d.h1.toFixed(2)} м`, color:"#C2453D"},
+    {type:"text", at:[VIEW.x1-3.0, d.h2+0.55], text:`h₂ = ${d.h2.toFixed(2)} м`, color:"#1A4FA0"},
+
+    {type:"poly", pts:[[0,0], TOP, foot], fill:"#eceae4", stroke:"#9a968c"},
+    {type:"hatch", a:[0,0], b:foot},
+    {type:"arc", c:[0,0], r:1.3, from:0, to:p.a, label:"α"},
+
+    {type:"line", pts:flight, stroke:"#C2453D", dash:[4,3], width:1.3},
+
+    {type:"circle", c:[0,0], r:0.14, fill:"#1a1a1a", stroke:"#1a1a1a"},
+    {type:"circle", c:[proj.x, proj.y], r:0.22, fill:"#C2453D", stroke:"#8a2f28"},
+    {type:"circle", c:[inc.x, inc.y], r:0.22, fill:"#1A4FA0", stroke:"#123a73"},
+
+    {type:"text", at:[(VIEW.x0+VIEW.x1)/2, VIEW.y1-0.7],
+     text:`t = ${t.toFixed(2)} с    h(полёт) = ${proj.y.toFixed(2)} м    h(наклонная) = ${inc.y.toFixed(2)} м`,
+     color:"#1a1a1a"},
+  ];
+}
+
+/* ================== ДВИЖОК — ниже не редактировать ================== */
+
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+let p = {}, t = 0, playing = false, last = 0;
+PARAMS.forEach(q => p[q.key] = q.val);
+
+// --- ползунки параметров ---
+$("params").innerHTML = PARAMS.map(q => `
+  <div class="par">
+    <label for="p-${q.key}"><b>${q.sym}</b> — ${q.label}</label>
+    <input type="range" id="p-${q.key}" min="${q.min}" max="${q.max}"
+           step="${q.step}" value="${q.val}">
+    <output id="o-${q.key}"></output>
+  </div>`).join("");
+
+PARAMS.forEach(q => {
+  $("p-"+q.key).addEventListener("input", e => {
+    p[q.key] = +e.target.value; refresh();
+  });
+});
+
+// --- время ---
+if (TIME){ $("t").max = TIME.max; }
+else { $("playbar").style.display = "none"; }
+
+$("go").addEventListener("click", () => {
+  playing = !playing;
+  $("go").textContent = playing ? "❚❚ Пауза" : "▶︎ Пуск";
+  last = performance.now();
+  if (playing) requestAnimationFrame(tick);
+});
+$("rew").addEventListener("click", () => {
+  t = 0; playing = false; $("go").textContent = "▶︎ Пуск"; refresh();
+});
+$("t").addEventListener("input", e => {
+  t = +e.target.value; playing = false; $("go").textContent = "▶︎ Пуск"; refresh();
+});
+
+function tick(now){
+  if (!playing) return;
+  t += (now - last)/1000; last = now;
+  if (t >= TIME.max){ t = TIME.max; playing = false; $("go").textContent = "▶︎ Пуск"; }
+  refresh(); if (playing) requestAnimationFrame(tick);
+}
+
+// --- подстановка значений в формулу ---
+const num = x => Math.abs(x) >= 100 ? x.toFixed(0)
+               : Math.abs(x) >= 10 ? x.toFixed(1)
+               : Math.abs(x) >= 1  ? x.toFixed(2) : x.toFixed(3);
+
+function substitute(expr){
+  const map = PARAMS.map(q => [q.sym, p[q.key]])
+    .concat(Object.entries(CONST))
+    .sort((a,b) => b[0].length - a[0].length);
+  let out = expr;
+  for (const [sym, v] of map)
+    out = out.split(sym).join(num(v));
+  return out;
+}
+
+function refresh(){
+  const d = derive(p);
+  PARAMS.forEach(q => $("o-"+q.key).textContent = num(p[q.key]) + " " + q.unit);
+  if (TIME){ $("t").value = t; $("ot").textContent = t.toFixed(2)+" "+TIME.unit; }
+
+  $("formulas").innerHTML = formulas(p, d).map(f => `
+    <tr><td class="n">${f.name}</td>
+    <td class="f"><span class="sym">${f.expr}</span>
+    <span class="step"> = ${substitute(f.expr)} = </span>
+    <span class="res">${num(f.val)} ${f.unit}</span></td></tr>`).join("");
+
+  draw(scene(p, d, t));
+}
+
+// --- рисование ---
+function draw(items){
+  const dpr = devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W*dpr){ cv.width = W*dpr; cv.height = H*dpr; }
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+
+  const sc = Math.min(W/(VIEW.x1-VIEW.x0), H/(VIEW.y1-VIEW.y0));
+  const ox = (W - (VIEW.x1-VIEW.x0)*sc)/2, oy = (H - (VIEW.y1-VIEW.y0)*sc)/2;
+  const X = x => ox + (x - VIEW.x0)*sc;
+  const Y = y => H - oy - (y - VIEW.y0)*sc;
+
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const it of items){
+    ctx.setLineDash(it.dash || []);
+    ctx.lineWidth = it.width || 1.6;
+    ctx.strokeStyle = it.stroke || it.color || "#2a2a2a";
+    ctx.fillStyle = it.fill || "transparent";
+
+    if (it.type === "poly" || it.type === "line"){
+      const pts = it.pts || [it.a, it.b];
+      ctx.beginPath();
+      pts.forEach((q,i)=> i ? ctx.lineTo(X(q[0]),Y(q[1])) : ctx.moveTo(X(q[0]),Y(q[1])));
+      if (it.type === "poly") ctx.closePath();
+      if (it.fill) ctx.fill();
+      ctx.stroke();
+    }
+    else if (it.type === "rect"){
+      const a = (it.angle||0)*Math.PI/180;
+      ctx.save(); ctx.translate(X(it.c[0]), Y(it.c[1])); ctx.rotate(a);
+      ctx.beginPath();
+      ctx.rect(-it.w*sc/2, -it.h*sc/2, it.w*sc, it.h*sc);
+      ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    else if (it.type === "circle"){
+      ctx.beginPath(); ctx.arc(X(it.c[0]), Y(it.c[1]), it.r*sc, 0, 7);
+      ctx.fill(); ctx.stroke();
+    }
+    else if (it.type === "vector"){
+      const x1=X(it.from[0]), y1=Y(it.from[1]), x2=X(it.to[0]), y2=Y(it.to[1]);
+      const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1);
+      if (len < 3) continue;
+      ctx.strokeStyle = it.color; ctx.fillStyle = it.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      const h = Math.min(9, len*0.35);
+      ctx.beginPath(); ctx.moveTo(x2,y2);
+      ctx.lineTo(x2 - h*Math.cos(ang-0.4), y2 - h*Math.sin(ang-0.4));
+      ctx.lineTo(x2 - h*Math.cos(ang+0.4), y2 - h*Math.sin(ang+0.4));
+      ctx.closePath(); ctx.fill();
+      if (it.label){
+        ctx.font = "600 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+        ctx.fillText(it.label, x2 + 7*Math.cos(ang), y2 + 7*Math.sin(ang) + 4);
+      }
+    }
+    else if (it.type === "arc"){
+      ctx.strokeStyle = "#6b6b6b"; ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.arc(X(it.c[0]), Y(it.c[1]), it.r*sc,
+              -it.from*Math.PI/180, -it.to*Math.PI/180, true);
+      ctx.stroke();
+      if (it.label){
+        const mid = (it.from + it.to)/2 * Math.PI/180;
+        ctx.fillStyle = "#6b6b6b";
+        ctx.font = "600 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+        ctx.fillText(it.label, X(it.c[0]) + it.r*sc*1.25*Math.cos(mid),
+                               Y(it.c[1]) - it.r*sc*1.25*Math.sin(mid) + 4);
+      }
+    }
+    else if (it.type === "hatch"){       // штриховка опоры
+      ctx.strokeStyle = "#9a968c"; ctx.lineWidth = 1;
+      const x1=X(it.a[0]), x2=X(it.b[0]), y=Y(it.a[1]);
+      ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke();
+      for (let x=x1; x<x2; x+=9){
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-7,y+8); ctx.stroke();
+      }
+    }
+    else if (it.type === "text"){
+      ctx.fillStyle = it.color || "#1a1a1a";
+      ctx.font = "600 14px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(it.text, X(it.at[0]), Y(it.at[1]));
+      ctx.textAlign = "left";
+    }
+  }
+  ctx.setLineDash([]);
+}
+
+$("h1").textContent = TITLE; $("sub").textContent = SUB; $("note").textContent = NOTE;
+addEventListener("resize", refresh);
+refresh();
+</script>
+</body>
+</html>
