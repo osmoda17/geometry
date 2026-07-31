@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Правильная призма <i>ABCDA₁B₁C₁D₁</i>: угол между <i>AA₁</i> и <i>BD₁</i></title>
+<style>
+  :root{--ink:#1a1a1a; --muted:#6b6b6b; --line:#d8d8d8; --sec-dark:#1A4FA0; --bg:#fbfbf9;}
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); min-height:100vh;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center;}
+  #wrap{width:100%; max-width:720px; padding:16px}
+  h1{font-size:17px; font-weight:600; margin:0 0 2px}
+  .sub{color:var(--muted); font-size:13px; margin:0 0 14px}
+  #cv{width:100%; aspect-ratio:1/0.95; display:block; background:#fff;
+      border:1px solid var(--line); border-radius:10px;}
+  .panel{margin-top:14px; background:#fff; border:1px solid var(--line);
+         border-radius:10px; padding:14px 16px;}
+  .axis{display:flex; align-items:center; gap:11px; margin-bottom:9px}
+  .axis label{font-weight:600; width:132px; white-space:nowrap; font-size:14px}
+  .axis input{flex:1; min-width:140px}
+  .axis output{width:52px; text-align:right; font-variant-numeric:tabular-nums;
+               color:var(--muted); font-size:14px}
+  #rx{accent-color:#C2453D} #ry{accent-color:#2E7D32} #rz{accent-color:#1A4FA0}
+  .buttons{display:flex; gap:8px; flex-wrap:wrap; margin-top:11px}
+  button{font:inherit; font-size:14px; padding:5px 11px; border:1px solid var(--line);
+         background:#fff; border-radius:7px; cursor:pointer}
+  button:hover{background:#f2f2ef}
+  .facts{margin-top:13px; padding-top:12px; border-top:1px solid var(--line);
+         display:grid; gap:5px 18px; font-size:14px;
+         grid-template-columns:repeat(auto-fit,minmax(165px,1fr));
+         font-variant-numeric:tabular-nums;}
+  .toggles{margin-top:12px; display:flex; gap:18px; flex-wrap:wrap; font-size:14px}
+  .key{margin-top:11px; font-size:13px; color:var(--muted)}
+  .sw{display:inline-block; width:11px; height:11px; border-radius:2px;
+      vertical-align:-1px; margin-right:4px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1 id="h-title"></h1>
+  <p class="sub" id="h-sub"></p>
+  <canvas id="cv"></canvas>
+  <div class="panel">
+    <div class="axis"><label for="rx">вокруг оси <i>X</i></label>
+      <input type="range" id="rx" min="0" max="360" step="1" value="0"><output id="o-rx">0°</output></div>
+    <div class="axis"><label for="ry">вокруг оси <i>Y</i></label>
+      <input type="range" id="ry" min="0" max="360" step="1" value="0"><output id="o-ry">0°</output></div>
+    <div class="axis"><label for="rz">вокруг оси <i>Z</i></label>
+      <input type="range" id="rz" min="0" max="360" step="1" value="0"><output id="o-rz">0°</output></div>
+    <div class="buttons">
+      <button data-set="0,0,0">Исходный вид</button>
+      <button data-set="0,0,90">Z + 90°</button>
+      <button data-set="90,0,0">Вид сверху</button>
+      <button data-set="0,0,180">Сзади</button>
+    </div>
+    <div class="facts" id="h-facts"></div>
+    <div class="toggles">
+      <label><input type="checkbox" id="t-lab" checked> подписи</label>
+      <label><input type="checkbox" id="t-out" checked> построения вне тела</label>
+      <label><input type="checkbox" id="t-ax"> оси</label>
+    </div>
+    <div class="key" id="h-key"></div>
+  </div>
+</div>
+
+<script>
+/* ==================================================================
+   CONFIG — единственное, что меняется от задачи к задаче.
+   Всё ниже CONFIG трогать не нужно.
+
+   points   — все точки: и вершины тела, и построенные точки задачи.
+              Координаты числами, уже посчитанные скриптом на sympy.
+   faces    — грани тела как циклы вершин (порядок обхода любой).
+              Рёбра и нормали движок выведет сам. Тело должно быть выпуклым.
+   highlight— имена точек задачи: рисуются синим и крупнее вершин.
+   extras   — отрезки вне тела (продолжения рёбер, вспомогательные линии).
+   polygons — заливки: kind "inside" (сечение тела, синее)
+              или "outside" (часть плоскости за пределами тела, оранжевое).
+   facts    — строки для панели под картинкой: данные и ответы.
+   center   — точка, вокруг которой всё вращается (обычно центр тела).
+   span     — сколько единиц длины должно влезть в холст.
+   ================================================================== */
+const CONFIG = {
+  title: "Правильная призма <i>ABCDA₁B₁C₁D₁</i>: угол между <i>AA₁</i> и <i>BD₁</i>",
+  subtitle: "Конструкция закреплена по условию. Ползунки поворачивают её вокруг трёх осей.",
+  points: {"A": [0.0, 0.0, 0.0], "B": [2.0, 0.0, 0.0], "C": [2.0, 2.0, 0.0], "D": [0.0, 2.0, 0.0], "A1": [0.0, 0.0, 1.0], "B1": [2.0, 0.0, 1.0], "C1": [2.0, 2.0, 1.0], "D1": [0.0, 2.0, 1.0]},
+  faces: {"bot": ["A", "B", "C", "D"], "top": ["A1", "B1", "C1", "D1"], "y0": ["A", "B", "B1", "A1"], "ya": ["D", "C", "C1", "D1"], "x0": ["A", "D", "D1", "A1"], "xa": ["B", "C", "C1", "B1"]},
+  highlight: ["A", "A1", "B", "D1"],
+  extras: [{"from": "B", "to": "D1"}],
+  polygons: [],
+  facts: ["<b>сторона основания</b> = 2", "<b>боковое ребро</b> = 1", "<b>BD₁</b> = 3 (диагональ призмы)", "угол между <b>AA₁</b> и <b>BD₁</b> = arccos(1/3) ≈ 70.53°"],
+  center: [1.0, 1.0, 0.5],
+  span: 6.0
+};
+/* ================= движок ================= */
+
+const P = CONFIG.points;
+const sub = s => s.replace(/(\d)/g, d => "₀₁₂₃₄₅₆₇₈₉"[+d]);
+
+// нормали граней, ориентированные наружу по центроиду тела
+const solidNames = [...new Set(Object.values(CONFIG.faces).flat())];
+const centroid = solidNames.reduce((s,n)=>[s[0]+P[n][0]/solidNames.length,
+  s[1]+P[n][1]/solidNames.length, s[2]+P[n][2]/solidNames.length],[0,0,0]);
+const NORM = {};
+for (const [f, vs] of Object.entries(CONFIG.faces)){
+  const [p,q,r] = vs.slice(0,3).map(n=>P[n]);
+  const u=[q[0]-p[0],q[1]-p[1],q[2]-p[2]], v=[r[0]-p[0],r[1]-p[1],r[2]-p[2]];
+  let n=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+  const out=[p[0]-centroid[0],p[1]-centroid[1],p[2]-centroid[2]];
+  if (n[0]*out[0]+n[1]*out[1]+n[2]*out[2] < 0) n=n.map(c=>-c);
+  NORM[f]=n;
+}
+// рёбра выводятся из граней: каждое ребро принадлежит двум граням
+const EDGES = {};
+for (const [f, vs] of Object.entries(CONFIG.faces))
+  for (let i=0;i<vs.length;i++){
+    const k=[vs[i], vs[(i+1)%vs.length]].sort().join("|");
+    (EDGES[k] = EDGES[k] || []).push(f);
+  }
+
+const CA=Math.cos(0.55), SA=Math.sin(0.55), CE=Math.cos(0.30), SE=Math.sin(0.30);
+let rx=0, ry=0, rz=0;
+
+function spin(p){                       // порядок фиксирован: Z, затем Y, затем X
+  let [x,y,z]=p, c, s, t;
+  c=Math.cos(rz); s=Math.sin(rz); t=x*c-y*s; y=x*s+y*c; x=t;
+  c=Math.cos(ry); s=Math.sin(ry); t=x*c+z*s; z=-x*s+z*c; x=t;
+  c=Math.cos(rx); s=Math.sin(rx); t=y*c-z*s; z=y*s+z*c; y=t;
+  return [x,y,z];
+}
+function cam(q){
+  const [x,y,z]=q;
+  return { x:x*CA-y*SA, depth:(x*SA+y*CA)*CE-z*SE, up:(x*SA+y*CA)*SE+z*CE };
+}
+const C = CONFIG.center;
+const view  = p => cam(spin([p[0]-C[0], p[1]-C[1], p[2]-C[2]]));
+const viewN = n => cam(spin(n));
+
+const cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+const $ = id => document.getElementById(id);
+
+function draw(){
+  const dpr=devicePixelRatio||1, w=cv.clientWidth, hh=cv.clientHeight;
+  if (cv.width!==w*dpr){ cv.width=w*dpr; cv.height=hh*dpr; }
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,hh);
+
+  const scale=Math.min(w,hh)/CONFIG.span, cx=w/2, cy=hh/2;
+  const S = name => { const q=view(Array.isArray(name)?name:P[name]);
+                      return {x:cx+q.x*scale, y:cy-q.up*scale}; };
+  const vis={}; for (const f in NORM) vis[f]=viewN(NORM[f]).depth<0;
+
+  if ($("t-ax").checked) axes(scale);
+  edges(false);
+  if ($("t-out").checked)
+    for (const g of CONFIG.polygons) if (g.kind==="outside")
+      poly(g.pts,"rgba(224,138,46,0.28)","#B96A15",[6,4]);
+  for (const g of CONFIG.polygons) if (g.kind!=="outside")
+    poly(g.pts,"rgba(76,139,245,0.34)","#1A4FA0",[]);
+  edges(true);
+  if ($("t-out").checked)
+    for (const e of CONFIG.extras) seg(S(e.from), S(e.to), "#777", [5,4]);
+
+  for (const k in P){
+    const hi = CONFIG.highlight.includes(k);
+    dot(S(k), hi?"#1A4FA0":"#1a1a1a", hi?4:3.5);
+  }
+  if ($("t-lab").checked)
+    for (const k in P) text(S(k), sub(k), CONFIG.highlight.includes(k)?"#1A4FA0":"#1a1a1a");
+
+  function edges(visible){
+    for (const [key, fs] of Object.entries(EDGES)){
+      const on = fs.some(f=>vis[f]);
+      if (on!==visible) continue;
+      const [p,q]=key.split("|");
+      seg(S(p),S(q), visible?"#2a2a2a":"#bcbcbc", visible?[]:[5,4], visible?1.8:1.2);
+    }
+  }
+  function axes(sc){
+    const L=CONFIG.span*0.28;
+    for (const [v,lab,c] of [[[L,0,0],"x","#C2453D"],[[0,L,0],"y","#2E7D32"],[[0,0,L],"z","#1A4FA0"]]){
+      seg(S([0,0,0]), S(v), c, [], 1.3);
+      ctx.font="600 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+      ctx.fillStyle=c; const p=S(v); ctx.fillText(lab,p.x+5,p.y+4);
+    }
+  }
+  function seg(p,q,c,dash,lw=1.6){
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
+    ctx.strokeStyle=c; ctx.lineWidth=lw; ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]);
+  }
+  function poly(names,fill,stroke,dash){
+    const pts=names.map(S);
+    ctx.beginPath(); pts.forEach((p,i)=> i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));
+    ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
+    ctx.strokeStyle=stroke; ctx.lineWidth=2; ctx.setLineDash(dash); ctx.stroke(); ctx.setLineDash([]);
+  }
+  function dot(p,c,r){ ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=c; ctx.fill(); }
+  function text(p,s,c){
+    ctx.font="600 14px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+    ctx.fillStyle=c;
+    ctx.fillText(s, p.x+(p.x<cx?-19:11), p.y+(p.y<cy?-6:15));
+  }
+}
+
+function sync(){
+  rx=+$("rx").value*Math.PI/180; ry=+$("ry").value*Math.PI/180; rz=+$("rz").value*Math.PI/180;
+  $("o-rx").textContent=$("rx").value+"°";
+  $("o-ry").textContent=$("ry").value+"°";
+  $("o-rz").textContent=$("rz").value+"°";
+  draw();
+}
+$("h-title").innerHTML = CONFIG.title;
+$("h-sub").textContent = CONFIG.subtitle;
+$("h-facts").innerHTML = CONFIG.facts.map(f=>"<div>"+f+"</div>").join("");
+$("h-key").innerHTML =
+  '<span class="sw" style="background:#4C8BF5"></span>сечение тела &nbsp;' +
+  (CONFIG.polygons.some(g=>g.kind==="outside")
+    ? '<span class="sw" style="background:#E08A2E"></span>построение за пределами тела' : '');
+
+["rx","ry","rz"].forEach(id=>$(id).addEventListener("input", sync));
+["t-lab","t-out","t-ax"].forEach(id=>$(id).addEventListener("change", draw));
+document.querySelectorAll("button[data-set]").forEach(b=>
+  b.addEventListener("click",()=>{
+    const [x,y,z]=b.dataset.set.split(",");
+    $("rx").value=x; $("ry").value=y; $("rz").value=z; sync();
+  }));
+addEventListener("resize", draw);
+sync();
+</script>
+</body>
+</html>
