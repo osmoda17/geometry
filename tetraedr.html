@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сечение правильного тетраэдра</title>
+<style>
+  :root{
+    --ink:#1a1a1a; --muted:#6b6b6b; --line:#d8d8d8;
+    --sec:#4C8BF5; --sec-dark:#1A4FA0; --mn:#D94040; --bg:#fbfbf9;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex; flex-direction:column; align-items:center; min-height:100vh;
+  }
+  #wrap{width:100%; max-width:760px; padding:16px}
+  h1{font-size:17px; font-weight:600; margin:0 0 2px}
+  .sub{color:var(--muted); font-size:13px; margin:0 0 14px}
+  #cv{
+    width:100%; aspect-ratio:1/0.82; display:block; cursor:grab;
+    background:#fff; border:1px solid var(--line); border-radius:10px;
+    touch-action:none;
+  }
+  #cv:active{cursor:grabbing}
+  .panel{
+    margin-top:14px; background:#fff; border:1px solid var(--line);
+    border-radius:10px; padding:14px 16px;
+  }
+  .row{display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  label.sl{font-weight:600; white-space:nowrap}
+  input[type=range]{flex:1; min-width:180px; accent-color:var(--sec-dark)}
+  .vals{
+    margin-top:12px; display:grid; gap:6px 18px;
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+    font-variant-numeric:tabular-nums;
+  }
+  .vals b{font-weight:600}
+  .area{
+    margin-top:12px; padding-top:11px; border-top:1px solid var(--line);
+    font-size:17px;
+  }
+  .area b{color:var(--sec-dark); font-size:20px}
+  .hint{margin-top:8px; color:var(--muted); font-size:13px}
+  .toggles{margin-top:12px; display:flex; gap:18px; flex-wrap:wrap; font-size:14px}
+  button{
+    font:inherit; padding:5px 12px; border:1px solid var(--line);
+    background:#fff; border-radius:7px; cursor:pointer;
+  }
+  button:hover{background:#f2f2ef}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Правильный тетраэдр <i>ABCD</i>: сечение плоскостью α ⊥ <i>MN</i></h1>
+  <p class="sub">Тяните мышью, чтобы повернуть. Ползунок двигает точку <i>K</i> по ребру <i>BC</i>.</p>
+
+  <canvas id="cv"></canvas>
+
+  <div class="panel">
+    <div class="row">
+      <label class="sl" for="bk">BK</label>
+      <input type="range" id="bk" min="0.2" max="3.8" step="0.05" value="1">
+      <button id="reset">Вид по умолчанию</button>
+    </div>
+
+    <div class="vals">
+      <div><b>BK</b> = <span id="v-bk"></span></div>
+      <div><b>KC</b> = <span id="v-kc"></span></div>
+      <div>сторона ∥ <i>CD</i> = <span id="v-a"></span></div>
+      <div>сторона ∥ <i>AB</i> = <span id="v-b"></span></div>
+    </div>
+
+    <div class="area">Площадь сечения <b id="v-s"></b> <span class="hint" id="v-note"></span></div>
+
+    <div class="toggles">
+      <label><input type="checkbox" id="t-mn" checked> отрезок <i>MN</i></label>
+      <label><input type="checkbox" id="t-lab" checked> подписи</label>
+      <label><input type="checkbox" id="t-spin"> автовращение</label>
+    </div>
+  </div>
+</div>
+
+<script>
+const A_EDGE = 4;
+const h = A_EDGE / Math.SQRT2;            // расстояние между серединами AB и CD
+
+// Вершины: AB лежит вдоль оси x, CD вдоль оси y, MN вдоль оси z.
+const V = {
+  A: [-A_EDGE/2, 0, -h/2],
+  B: [ A_EDGE/2, 0, -h/2],
+  C: [0, -A_EDGE/2,  h/2],
+  D: [0,  A_EDGE/2,  h/2],
+};
+const M = mid(V.A, V.B), N = mid(V.C, V.D);
+const EDGES = [["A","B"],["A","C"],["A","D"],["B","C"],["B","D"],["C","D"]];
+
+function mid(p,q){ return [(p[0]+q[0])/2,(p[1]+q[1])/2,(p[2]+q[2])/2]; }
+function lerp(p,q,t){ return [p[0]+(q[0]-p[0])*t, p[1]+(q[1]-p[1])*t, p[2]+(q[2]-p[2])*t]; }
+
+// --- состояние вида ---
+let azim = 0.6, elev = 0.32, t = 0.25, spin = false;
+
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+
+function project(p){
+  const ca = Math.cos(azim), sa = Math.sin(azim);
+  const x1 =  p[0]*ca - p[1]*sa;
+  const y1 =  p[0]*sa + p[1]*ca;
+  const ce = Math.cos(elev), se = Math.sin(elev);
+  const y2 =  y1*ce - p[2]*se;
+  const z2 =  y1*se + p[2]*ce;
+  return { x: x1, y: -z2, depth: y2 };     // depth: больше = дальше
+}
+
+// Классическое правило для тетраэдра: рёбра при самой дальней вершине
+// невидимы, только если её проекция попала внутрь треугольника остальных трёх.
+function hiddenVertex(P){
+  let far = "A";
+  for (const k in P) if (P[k].depth > P[far].depth) far = k;
+  const rest = Object.keys(P).filter(k => k !== far);
+  const [p,q,r] = rest.map(k => P[k]), f = P[far];
+  const s = (a,b,c) => (a.x-c.x)*(b.y-c.y) - (b.x-c.x)*(a.y-c.y);
+  const d1 = s(f,p,q), d2 = s(f,q,r), d3 = s(f,r,p);
+  const neg = d1<0||d2<0||d3<0, pos = d1>0||d2>0||d3>0;
+  return (neg && pos) ? null : far;        // не внутри -> ничего не скрываем
+}
+
+function draw(){
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, hgt = cv.clientHeight;
+  if (cv.width !== w*dpr){ cv.width = w*dpr; cv.height = hgt*dpr; }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,hgt);
+
+  const scale = Math.min(w, hgt) / 6.2;
+  const cx = w/2, cy = hgt/2;
+  const S = p => { const q = project(p); return {x: cx+q.x*scale, y: cy+q.y*scale, depth:q.depth}; };
+
+  const P = {}; for (const k in V) P[k] = S(V[k]);
+  const hid = hiddenVertex(P);
+
+  // сечение: точки на рёбрах BC, BD, AD, AC (параметр t от B и от A)
+  const K = lerp(V.B, V.C, t), L = lerp(V.B, V.D, t);
+  const Q = lerp(V.A, V.D, t), R = lerp(V.A, V.C, t);
+  const poly = [R, K, L, Q].map(S);
+
+  // 1. рёбра
+  for (const [a,b] of EDGES){
+    const isHidden = hid && (a === hid || b === hid);
+    ctx.beginPath();
+    ctx.moveTo(P[a].x, P[a].y); ctx.lineTo(P[b].x, P[b].y);
+    ctx.strokeStyle = isHidden ? "#b4b4b4" : "#2a2a2a";
+    ctx.lineWidth = isHidden ? 1.2 : 1.8;
+    ctx.setLineDash(isHidden ? [5,4] : []);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // 2. сечение
+  ctx.beginPath();
+  poly.forEach((p,i) => i ? ctx.lineTo(p.x,p.y) : ctx.moveTo(p.x,p.y));
+  ctx.closePath();
+  ctx.fillStyle = "rgba(76,139,245,0.34)";
+  ctx.fill();
+  ctx.strokeStyle = "#1A4FA0"; ctx.lineWidth = 2.2; ctx.stroke();
+
+  // 3. MN
+  if (document.getElementById("t-mn").checked){
+    const m = S(M), n = S(N);
+    ctx.beginPath(); ctx.moveTo(m.x,m.y); ctx.lineTo(n.x,n.y);
+    ctx.strokeStyle = "#D94040"; ctx.lineWidth = 1.8; ctx.setLineDash([6,4]);
+    ctx.stroke(); ctx.setLineDash([]);
+    dot(m,"#D94040"); dot(n,"#D94040");
+    if (labels()){ text(m,"M","#D94040",13); text(n,"N","#D94040",13); }
+  }
+
+  // 4. точки и подписи
+  dot(poly[1], "#1A4FA0", 4);
+  for (const k in P) dot(P[k], "#1a1a1a", 4);
+  if (labels()){
+    for (const k in P) text(P[k], k, "#1a1a1a", 15);
+    text(poly[1], "K", "#1A4FA0", 14);
+  }
+
+  function dot(p,c,r=3.5){ ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=c; ctx.fill(); }
+  function text(p,s,c,size){
+    ctx.font = "600 "+size+"px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+    ctx.fillStyle = c;
+    const off = 11;
+    ctx.fillText(s, p.x + (p.x < cx ? -off-size*0.55 : off), p.y + (p.y < cy ? -6 : 15));
+  }
+  function labels(){ return document.getElementById("t-lab").checked; }
+}
+
+function readout(){
+  const bk = A_EDGE*t, kc = A_EDGE-bk;
+  const f = x => x.toFixed(2).replace(/\.?0+$/,"");
+  document.getElementById("v-bk").textContent = f(bk);
+  document.getElementById("v-kc").textContent = f(kc);
+  document.getElementById("v-a").textContent  = f(bk);
+  document.getElementById("v-b").textContent  = f(kc);
+  document.getElementById("v-s").textContent  = "S = " + f(bk*kc);
+  document.getElementById("v-note").textContent =
+    Math.abs(bk-kc) < 0.06 ? "— сечение стало квадратом, площадь максимальна" : "= BK · KC";
+}
+
+// --- управление ---
+let drag = null;
+cv.addEventListener("pointerdown", e => { drag = {x:e.clientX, y:e.clientY}; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener("pointerup",   () => drag = null);
+cv.addEventListener("pointermove", e => {
+  if (!drag) return;
+  azim += (e.clientX - drag.x) * 0.011;
+  elev += (e.clientY - drag.y) * 0.011;
+  elev = Math.max(-1.45, Math.min(1.45, elev));
+  drag = {x:e.clientX, y:e.clientY};
+  draw();
+});
+
+document.getElementById("bk").addEventListener("input", e => {
+  t = parseFloat(e.target.value) / A_EDGE; readout(); draw();
+});
+document.getElementById("reset").addEventListener("click", () => {
+  azim = 0.6; elev = 0.32; draw();
+});
+["t-mn","t-lab"].forEach(id =>
+  document.getElementById(id).addEventListener("change", draw));
+document.getElementById("t-spin").addEventListener("change", e => {
+  spin = e.target.checked; if (spin) tick();
+});
+function tick(){ if (!spin) return; azim += 0.006; draw(); requestAnimationFrame(tick); }
+
+window.addEventListener("resize", draw);
+readout(); draw();
+</script>
+</body>
+</html>
