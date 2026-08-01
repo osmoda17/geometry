@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Физика: метеорологический зонд</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#6b6b6b;--line:#d8d8d8;--acc:#1A4FA0;--bg:#fbfbf9}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);min-height:100vh;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center}
+  #wrap{width:100%;max-width:760px;padding:16px}
+  h1{font-size:17px;font-weight:600;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+  #cv{width:100%;aspect-ratio:1/0.8;display:block;background:#fff;
+      border:1px solid var(--line);border-radius:10px}
+  .panel{margin-top:12px;background:#fff;border:1px solid var(--line);
+         border-radius:10px;padding:13px 15px}
+  .play{display:flex;align-items:center;gap:11px}
+  button{font:inherit;font-size:14px;padding:6px 14px;border:1px solid var(--line);
+         background:#fff;border-radius:7px;cursor:pointer;white-space:nowrap}
+  button:hover{background:#f2f2ef}
+  button.go{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+  button.go:hover{background:#15407f}
+  .par{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+  .par label{width:220px;font-size:14px;white-space:nowrap}
+  .par label b{font-weight:600}
+  .par input{flex:1;min-width:110px;accent-color:var(--acc)}
+  .par output{width:84px;text-align:right;font-variant-numeric:tabular-nums;
+              font-size:14px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td{padding:6px 0;border-bottom:1px solid #eeeeeb;vertical-align:baseline}
+  td.n{color:var(--muted);width:34%;padding-right:10px}
+  td.f{font-variant-numeric:tabular-nums}
+  .sym{color:var(--ink)}
+  .step{color:var(--muted)}
+  .res{color:var(--acc);font-weight:600}
+  .note{margin-top:9px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1 id="h1"></h1>
+  <p class="sub" id="sub"></p>
+  <canvas id="cv"></canvas>
+
+  <div class="panel play" id="playbar">
+    <button class="go" id="go">▶︎ Пуск</button>
+    <button id="rew">⟲ Сброс</button>
+    <input type="range" id="t" min="0" step="0.01" style="flex:1;accent-color:#1A4FA0">
+    <output id="ot"></output>
+  </div>
+
+  <div class="panel" id="params"></div>
+
+  <div class="panel">
+    <table id="formulas"></table>
+    <div class="note" id="note"></div>
+  </div>
+</div>
+
+<script>
+/* ==================================================================
+   БЛОК ЗАДАЧИ — меняется от задачи к задаче.
+   Ниже, после пометки ДВИЖОК, ничего править не нужно.
+   ================================================================== */
+
+const TITLE = "Метеорологический зонд: подъём и новое равновесие";
+const SUB   = "Ползунки меняют условие; «Пуск» показывает переход от удержания у земли к равновесию на высоте.";
+const NOTE  = "Траектория подъёма показана условно (для наглядности): в условии заданы только начальное состояние (у поверхности, зонд удерживают) и конечное (на высоте, где F_A = mg и объём вырос в n раз) — сама зависимость давления от высоты в задаче не определяется.";
+
+// Постоянные: подставляются в формулы наравне с параметрами.
+const CONST = { g: 10 };
+
+// Параметры задачи. key — имя в коде, sym — как выглядит в формулах.
+const PARAMS = [
+  { key:"m",  sym:"m",  label:"масса зонда",              min:5,     max:50,     step:1,    val:20,     unit:"кг" },
+  { key:"F",  sym:"F",  label:"сила удержания у земли",   min:200,   max:3000,   step:50,   val:1000,   unit:"Н"  },
+  { key:"n",  sym:"n",  label:"кратность роста объёма",   min:1.2,   max:4,      step:0.1,  val:2,      unit:"×"  },
+  { key:"T1", sym:"T₁", label:"температура у земли",      min:250,   max:320,    step:1,    val:290,    unit:"К"  },
+  { key:"T2", sym:"T₂", label:"температура на высоте",    min:180,   max:280,    step:1,    val:230,    unit:"К"  },
+  { key:"p1", sym:"p₁", label:"давление у земли",         min:70000, max:110000, step:1000, val:100000, unit:"Па" },
+];
+
+// Время: схематичная анимация подъёма (не привязана к реальной скорости).
+const TIME = { max: 3, unit: "с", label: "t" };
+
+// Область рисования в физических координатах (условные метры), ось y вверх.
+const VIEW = { x0:-1.2, x1:6.4, y0:-0.8, y1:5.3 };
+
+// Всё, что вычисляется из параметров. Возвращает объект.
+function derive(p){
+  const mg     = p.m * CONST.g;                 // вес зонда, Н
+  const FA0    = mg + p.F;                       // архимедова сила у поверхности, Н
+  const rhoRatio = mg / (p.n * FA0);             // rho(h)/rho0 = mg / (n*(mg+F))
+  const Tratio   = p.T2 / p.T1;                  // T(h)/T0
+  const pRatio   = rhoRatio * Tratio;            // p(h)/p0
+  const ph       = p.p1 * pRatio;                // давление на высоте, Па
+
+  return {
+    mg, FA0, rhoRatio, Tratio, pRatio, ph,
+    r0: 0.42,                                    // условный радиус зонда у земли, м
+    yTop: 3.0,                                   // условная высота на картинке, м
+    xPos: 2.6,
+    s: t => Math.min(t / TIME.max, 1),           // доля пройденного пути (0..1)
+  };
+}
+
+// Формулы. expr — символьный вид, val — число, unit — единица.
+// Движок сам подставит текущие значения символов в expr.
+function formulas(p, d){
+  return [
+    { name:"Архимедова сила у земли",        expr:"m·g + F",                  val:d.FA0,      unit:"Н" },
+    { name:"Отношение плотностей воздуха",   expr:"m·g / (n·(m·g+F))",        val:d.rhoRatio, unit:""  },
+    { name:"Отношение давлений p(h)/p₁",     expr:"[m·g/(n·(m·g+F))]·T₂/T₁",  val:d.pRatio,   unit:""  },
+    { name:"Давление на высоте p(h)",        expr:"p₁·[m·g/(n·(m·g+F))]·T₂/T₁", val:d.ph,     unit:"Па" },
+  ];
+}
+
+// Сцена: список примитивов в физических координатах.
+function scene(p, d, t){
+  const f = d.s(t);                              // 0 — у земли (удерживают), 1 — равновесие на высоте
+  const y = d.yTop * f;
+  const r = d.r0 * Math.cbrt(1 + (p.n - 1) * f); // радиус растёт как V^(1/3)
+  const cx = d.xPos, cy = y + r + 0.05;
+  const FAnow = d.FA0 + (d.mg - d.FA0) * f;      // архимедова сила убывает от FA0 до mg (схематично)
+
+  const k = 0.001;                               // масштаб векторов: ньютоны -> условные метры (силы здесь до ~3500 Н)
+  const items = [
+    {type:"line", a:[VIEW.x0+0.2, 0], b:[VIEW.x1-0.2, 0], stroke:"#9a968c"},
+    {type:"hatch", a:[VIEW.x0+0.2, 0], b:[VIEW.x1-0.2, 0]},
+    {type:"line", a:[VIEW.x0+0.2, d.yTop], b:[VIEW.x1-0.2, d.yTop], stroke:"#c8c4ba", dash:[5,5]},
+    {type:"text", at:[VIEW.x0+1.15, d.yTop+0.28], text:"высота равновесия", color:"#8a867c"},
+    {type:"circle", c:[cx,cy], r:r, fill:"#cfe0fb", stroke:"#1A4FA0"},
+  ];
+
+  // вес — всегда вниз
+  items.push({type:"vector", from:[cx,cy], to:[cx, cy - d.mg*k], color:"#C2453D", label:"mg"});
+  // архимедова сила — всегда вверх, длина меняется по ходу подъёма
+  items.push({type:"vector", from:[cx,cy], to:[cx, cy + FAnow*k], color:"#2E7D32", label:"F_A"});
+
+  // трос и сила удержания видны только в начальном состоянии (у земли)
+  if (f < 0.03){
+    items.push({type:"line", a:[cx, 0], b:[cx, cy - r], stroke:"#6b6b6b", dash:[3,3]});
+    const Flen = Math.min(p.F * k, 0.9);           // ограничиваем длину, чтобы стрелка не уходила за край
+    items.push({type:"vector", from:[cx+0.18, cy], to:[cx+0.18, cy - Flen], color:"#B96A15", label:"F"});
+    items.push({type:"text", at:[cx, -0.45], text:"зонд удерживают у земли", color:"#1a1a1a"});
+  } else if (f >= 0.985){
+    items.push({type:"text", at:[cx, cy + r + 0.4], text:"равновесие: F_A = mg, объём ×" + p.n.toFixed(1), color:"#1a1a1a"});
+  } else {
+    items.push({type:"text", at:[cx, cy + r + 0.4], text:"подъём: V/V₀ = " + (1+(p.n-1)*f).toFixed(2), color:"#1a1a1a"});
+  }
+
+  return items;
+}
+
+/* ================== ДВИЖОК — ниже не редактировать ================== */
+
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+let p = {}, t = 0, playing = false, last = 0;
+PARAMS.forEach(q => p[q.key] = q.val);
+
+// --- ползунки параметров ---
+$("params").innerHTML = PARAMS.map(q => `
+  <div class="par">
+    <label for="p-${q.key}"><b>${q.sym}</b> — ${q.label}</label>
+    <input type="range" id="p-${q.key}" min="${q.min}" max="${q.max}"
+           step="${q.step}" value="${q.val}">
+    <output id="o-${q.key}"></output>
+  </div>`).join("");
+
+PARAMS.forEach(q => {
+  $("p-"+q.key).addEventListener("input", e => {
+    p[q.key] = +e.target.value; refresh();
+  });
+});
+
+// --- время ---
+if (TIME){ $("t").max = TIME.max; }
+else { $("playbar").style.display = "none"; }
+
+$("go").addEventListener("click", () => {
+  playing = !playing;
+  $("go").textContent = playing ? "❚❚ Пауза" : "▶︎ Пуск";
+  last = performance.now();
+  if (playing) requestAnimationFrame(tick);
+});
+$("rew").addEventListener("click", () => {
+  t = 0; playing = false; $("go").textContent = "▶︎ Пуск"; refresh();
+});
+$("t").addEventListener("input", e => {
+  t = +e.target.value; playing = false; $("go").textContent = "▶︎ Пуск"; refresh();
+});
+
+function tick(now){
+  if (!playing) return;
+  t += (now - last)/1000; last = now;
+  if (t >= TIME.max){ t = TIME.max; playing = false; $("go").textContent = "▶︎ Пуск"; }
+  refresh(); if (playing) requestAnimationFrame(tick);
+}
+
+// --- подстановка значений в формулу ---
+const num = x => Math.abs(x) >= 1000 ? x.toFixed(0)
+               : Math.abs(x) >= 100 ? x.toFixed(1)
+               : Math.abs(x) >= 1  ? x.toFixed(3) : x.toFixed(4);
+
+function substitute(expr){
+  const map = PARAMS.map(q => [q.sym, p[q.key]])
+    .concat(Object.entries(CONST))
+    .sort((a,b) => b[0].length - a[0].length);
+  let out = expr;
+  for (const [sym, v] of map)
+    out = out.split(sym).join(num(v));
+  return out;
+}
+
+function refresh(){
+  const d = derive(p);
+  PARAMS.forEach(q => $("o-"+q.key).textContent = num(p[q.key]) + " " + q.unit);
+  if (TIME){ $("t").value = t; $("ot").textContent = t.toFixed(2)+" "+TIME.unit; }
+
+  $("formulas").innerHTML = formulas(p, d).map(f => `
+    <tr><td class="n">${f.name}</td>
+    <td class="f"><span class="sym">${f.expr}</span>
+    <span class="step"> = ${substitute(f.expr)} = </span>
+    <span class="res">${num(f.val)} ${f.unit}</span></td></tr>`).join("");
+
+  draw(scene(p, d, t));
+}
+
+// --- рисование ---
+function draw(items){
+  const dpr = devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W*dpr){ cv.width = W*dpr; cv.height = H*dpr; }
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+
+  const sc = Math.min(W/(VIEW.x1-VIEW.x0), H/(VIEW.y1-VIEW.y0));
+  const ox = (W - (VIEW.x1-VIEW.x0)*sc)/2, oy = (H - (VIEW.y1-VIEW.y0)*sc)/2;
+  const X = x => ox + (x - VIEW.x0)*sc;
+  const Y = y => H - oy - (y - VIEW.y0)*sc;
+
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const it of items){
+    ctx.setLineDash(it.dash || []);
+    ctx.lineWidth = it.width || 1.6;
+    ctx.strokeStyle = it.stroke || it.color || "#2a2a2a";
+    ctx.fillStyle = it.fill || "transparent";
+
+    if (it.type === "poly" || it.type === "line"){
+      const pts = it.pts || [it.a, it.b];
+      ctx.beginPath();
+      pts.forEach((q,i)=> i ? ctx.lineTo(X(q[0]),Y(q[1])) : ctx.moveTo(X(q[0]),Y(q[1])));
+      if (it.type === "poly") ctx.closePath();
+      if (it.fill) ctx.fill();
+      ctx.stroke();
+    }
+    else if (it.type === "rect"){
+      const a = (it.angle||0)*Math.PI/180;
+      ctx.save(); ctx.translate(X(it.c[0]), Y(it.c[1])); ctx.rotate(a);
+      ctx.beginPath();
+      ctx.rect(-it.w*sc/2, -it.h*sc/2, it.w*sc, it.h*sc);
+      ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    else if (it.type === "circle"){
+      ctx.beginPath(); ctx.arc(X(it.c[0]), Y(it.c[1]), it.r*sc, 0, 7);
+      ctx.fill(); ctx.stroke();
+    }
+    else if (it.type === "vector"){
+      const x1=X(it.from[0]), y1=Y(it.from[1]), x2=X(it.to[0]), y2=Y(it.to[1]);
+      const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1);
+      if (len < 3) continue;
+      ctx.strokeStyle = it.color; ctx.fillStyle = it.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      const h = Math.min(9, len*0.35);
+      ctx.beginPath(); ctx.moveTo(x2,y2);
+      ctx.lineTo(x2 - h*Math.cos(ang-0.4), y2 - h*Math.sin(ang-0.4));
+      ctx.lineTo(x2 - h*Math.cos(ang+0.4), y2 - h*Math.sin(ang+0.4));
+      ctx.closePath(); ctx.fill();
+      if (it.label){
+        ctx.font = "600 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+        ctx.fillText(it.label, x2 + 7*Math.cos(ang), y2 + 7*Math.sin(ang) + 4);
+      }
+    }
+    else if (it.type === "arc"){
+      ctx.strokeStyle = "#6b6b6b"; ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.arc(X(it.c[0]), Y(it.c[1]), it.r*sc,
+              -it.from*Math.PI/180, -it.to*Math.PI/180, true);
+      ctx.stroke();
+      if (it.label){
+        const mid = (it.from + it.to)/2 * Math.PI/180;
+        ctx.fillStyle = "#6b6b6b";
+        ctx.font = "600 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+        ctx.fillText(it.label, X(it.c[0]) + it.r*sc*1.25*Math.cos(mid),
+                               Y(it.c[1]) - it.r*sc*1.25*Math.sin(mid) + 4);
+      }
+    }
+    else if (it.type === "hatch"){       // штриховка опоры
+      ctx.strokeStyle = "#9a968c"; ctx.lineWidth = 1;
+      const x1=X(it.a[0]), x2=X(it.b[0]), y=Y(it.a[1]);
+      ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke();
+      for (let x=x1; x<x2; x+=9){
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-7,y+8); ctx.stroke();
+      }
+    }
+    else if (it.type === "text"){
+      ctx.fillStyle = it.color || "#1a1a1a";
+      ctx.font = "600 14px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(it.text, X(it.at[0]), Y(it.at[1]));
+      ctx.textAlign = "left";
+    }
+  }
+  ctx.setLineDash([]);
+}
+
+$("h1").textContent = TITLE; $("sub").textContent = SUB; $("note").textContent = NOTE;
+addEventListener("resize", refresh);
+refresh();
+</script>
+</body>
+</html>
