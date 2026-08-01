@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Закон Ампера: интерактивная модель</title>
+<style>
+  :root{--ink:#1a1a1a;--muted:#6b6b6b;--line:#d8d8d8;--acc:#1A4FA0;--bg:#fbfbf9}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);min-height:100vh;
+    font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center}
+  #wrap{width:100%;max-width:760px;padding:16px}
+  h1{font-size:17px;font-weight:600;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+  #cv{width:100%;aspect-ratio:1/0.62;display:block;background:#fff;
+      border:1px solid var(--line);border-radius:10px}
+  .panel{margin-top:12px;background:#fff;border:1px solid var(--line);
+         border-radius:10px;padding:13px 15px}
+  .play{display:flex;align-items:center;gap:11px}
+  button{font:inherit;font-size:14px;padding:6px 14px;border:1px solid var(--line);
+         background:#fff;border-radius:7px;cursor:pointer;white-space:nowrap}
+  button:hover{background:#f2f2ef}
+  button.go{background:var(--acc);color:#fff;border-color:var(--acc);font-weight:600}
+  button.go:hover{background:#15407f}
+  .par{display:flex;align-items:center;gap:11px;margin-bottom:8px}
+  .par label{width:190px;font-size:14px;white-space:nowrap}
+  .par label b{font-weight:600}
+  .par input{flex:1;min-width:110px;accent-color:var(--acc)}
+  .par output{width:74px;text-align:right;font-variant-numeric:tabular-nums;
+              font-size:14px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  td{padding:6px 0;border-bottom:1px solid #eeeeeb;vertical-align:baseline}
+  td.n{color:var(--muted);width:34%;padding-right:10px}
+  td.f{font-variant-numeric:tabular-nums}
+  .sym{color:var(--ink)}
+  .step{color:var(--muted)}
+  .res{color:var(--acc);font-weight:600}
+  .note{margin-top:9px;font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1 id="h1"></h1>
+  <p class="sub" id="sub"></p>
+  <canvas id="cv"></canvas>
+
+  <div class="panel play" id="playbar">
+    <button class="go" id="go">▶︎ Пуск</button>
+    <button id="rew">⟲ Сброс</button>
+    <input type="range" id="t" min="0" step="0.01" style="flex:1;accent-color:#1A4FA0">
+    <output id="ot"></output>
+  </div>
+
+  <div class="panel" id="params"></div>
+
+  <div class="panel">
+    <table id="formulas"></table>
+    <div class="note" id="note"></div>
+  </div>
+</div>
+
+<script>
+/* ==================================================================
+   БЛОК ЗАДАЧИ — меняется от задачи к задаче.
+   Ниже, после пометки ДВИЖОК, ничего править не нужно.
+   ================================================================== */
+
+const TITLE = "Закон Ампера: F = I·|B|·Δl·sin α";
+const SUB   = "Прямой проводник с током в однородном поле. Ползунки меняют условие, «Пуск» отпускает проводник.";
+const NOTE  = "Сила Ампера перпендикулярна и проводнику, и вектору B: направление даёт правило левой руки — "
+            + "линии B входят в ладонь, четыре пальца по току, отогнутый большой палец показывает силу. "
+            + "При α → 0 проводник становится вдоль поля и сила обращается в нуль. "
+            + "При значениях по умолчанию проводник отрывается ровно на α = 30°: там I·B·Δl·sin α = m·g.";
+
+// Постоянные: подставляются в формулы наравне с параметрами.
+const CONST = { g: 10 };
+
+// Параметры задачи. key — имя в коде, sym — как выглядит в формулах.
+const PARAMS = [
+  { key:"I",  sym:"I",  label:"сила тока",          min:0,     max:10,   step:0.5,   val:5,    unit:"А"  },
+  { key:"B",  sym:"B",  label:"магнитная индукция", min:0.05,  max:1,    step:0.05,  val:0.4,  unit:"Тл" },
+  { key:"L",  sym:"Δl", label:"длина проводника",   min:0.05,  max:0.5,  step:0.05,  val:0.2,  unit:"м"  },
+  { key:"al", sym:"α",  label:"угол между Δl и B",  min:5,     max:175,  step:5,     val:90,   unit:"°"  },
+  { key:"m",  sym:"m",  label:"масса проводника",   min:0.005, max:0.05, step:0.005, val:0.02, unit:"кг" },
+];
+
+// Время: проводник свободен, поднимается, пока сила Ампера больше веса.
+const TIME = { max: 0.3, unit: "с", label: "t" };
+
+// Область рисования (метры на экране после аксонометрии), ось y вверх.
+const VIEW = { x0:-0.63, x1:0.60, y0:-0.26, y1:0.50 };
+
+const HMAX = 0.16;          // выше проводник не поднимаем — уедет за кадр
+const R0   = 0.012;         // радиус проводника: высота, на которой он лежит
+
+// аксонометрия: x вправо, y «в глубину», z вверх
+function P3(x, y, z){ return [x + 0.42*y, z + 0.30*y]; }
+
+// Всё, что вычисляется из параметров.
+function derive(p){
+  const rad  = p.al * Math.PI/180;
+  const sinA = Math.sin(rad), cosA = Math.cos(rad);
+  const F    = p.I * p.B * p.L * sinA;      // закон Ампера (1.2)
+  const P    = p.m * CONST.g;               // вес проводника
+  const lifts = F > P;
+  const acc  = lifts ? (F - P)/p.m : 0;     // отрывается только при F > mg
+  const Nre  = lifts ? 0 : P - F;           // иначе давит на опору
+  const Imin = P/(p.B * p.L * sinA);        // ток, при котором начинается отрыв
+  const tmax = acc > 0 ? Math.sqrt(2*HMAX/acc) : Infinity;   // момент выхода за кадр
+  return { rad, sinA, cosA, F, P, lifts, acc, Nre, Imin,
+           h: t => acc*Math.pow(Math.min(t, tmax), 2)/2,
+           v: t => acc*Math.min(t, tmax),
+           k: 0.26/Math.max(F, P, 0.5) };   // общий масштаб векторов: Н -> метры картинки
+}
+
+// Формулы: expr — символьный вид, val — число. Движок подставит значения символов.
+function formulas(p, d){
+  const rows = [
+    { name:"Сила Ампера",      expr:"I·B·Δl·sin α", val:d.F, unit:"Н" },
+    { name:"Вес проводника",   expr:"m·g",          val:d.P, unit:"Н" },
+  ];
+  if (d.lifts)
+    rows.push({ name:"Ускорение вверх", expr:"(I·B·Δl·sin α − m·g)/m", val:d.acc, unit:"м/с²" });
+  else
+    rows.push({ name:"Давление на опору", expr:"m·g − I·B·Δl·sin α",   val:d.Nre, unit:"Н" });
+  rows.push({ name:"Ток отрыва", expr:"m·g/(B·Δl·sin α)", val:d.Imin, unit:"А" });
+  return rows;
+}
+
+// Сцена: список примитивов.
+function scene(p, d, t){
+  const z  = R0 + (d.lifts ? d.h(t) : 0);            // высота оси проводника
+  const ux = d.cosA, uy = -d.sinA;                   // направление тока в горизонтальной плоскости
+  const hl = p.L/2;
+  const A  = [-ux*hl, -uy*hl], Bp = [ux*hl, uy*hl];  // концы проводника (x, y)
+  const S  = [];
+
+  // горизонтальная плоскость, в которой лежат B и проводник
+  S.push({type:"poly", pts:[P3(-0.45,-0.22,0), P3(0.45,-0.22,0), P3(0.45,0.22,0), P3(-0.45,0.22,0)],
+          fill:"#f4f2ec", stroke:"#c9c5bb", width:1.2});
+
+  // линии однородного поля B
+  for (const yy of [-0.19, 0, 0.19])
+    S.push({type:"vector", from:P3(-0.46,yy,0), to:P3(0.40,yy,0), color:"#8fb2de",
+            label: yy === 0.19 ? "B" : ""});
+
+  // дуга угла α между направлением B и элементом тока
+  const arc = [];
+  for (let i = 0; i <= 24; i++){
+    const f = d.rad*i/24;
+    arc.push(P3(0.13*Math.cos(f), -0.13*Math.sin(f), R0));
+  }
+  S.push({type:"line", pts:arc, stroke:"#6b6b6b", width:1.3});
+  const mid = d.rad/2;
+  S.push({type:"text", at:P3(0.185*Math.cos(mid), -0.185*Math.sin(mid), R0), text:"α", color:"#6b6b6b"});
+
+  // проекция поднятого проводника на плоскость и вертикаль
+  if (z > R0 + 1e-6){
+    S.push({type:"line", pts:[P3(A[0],A[1],0), P3(Bp[0],Bp[1],0)], stroke:"#c9c5bb", dash:[4,4], width:1.2});
+    S.push({type:"line", pts:[P3(0,0,0), P3(0,0,z)], stroke:"#c9c5bb", dash:[3,4], width:1.2});
+  }
+
+  // сам проводник и ток вдоль него
+  S.push({type:"line", pts:[P3(A[0],A[1],z), P3(Bp[0],Bp[1],z)], stroke:"#4a4a4a", width:6});
+  S.push({type:"circle", c:P3(A[0],A[1],z),  r:0.011, fill:"#4a4a4a", stroke:"#4a4a4a"});
+  S.push({type:"circle", c:P3(Bp[0],Bp[1],z), r:0.011, fill:"#4a4a4a", stroke:"#4a4a4a"});
+  S.push({type:"vector", from:P3(A[0]*0.8, A[1]*0.8, z), to:P3(Bp[0]*1.0, Bp[1]*1.0, z),
+          color:"#B96A15", label:"I, Δl"});
+
+  // силы: общий масштаб d.k
+  const C = P3(0, 0, z);
+  S.push({type:"vector", from:C, to:[C[0], C[1] + d.F*d.k], color:"#1A4FA0", label:"F"});
+  S.push({type:"vector", from:C, to:[C[0], C[1] - d.P*d.k], color:"#C2453D", label:"mg"});
+
+  // строка состояния
+  const msg = d.lifts
+    ? `F > mg: проводник поднялся на ${d.h(t).toFixed(3)} м${d.h(t) >= HMAX - 1e-9 ? " (край кадра)" : ""}, v = ${d.v(t).toFixed(2)} м/с`
+    : (d.F < 1e-9 ? "sin α ≈ 0: проводник почти вдоль поля, сила Ампера ничтожна"
+                  : `F ≤ mg: проводник лежит, опора давит с силой ${d.Nre.toFixed(3)} Н`);
+  S.push({type:"text", at:[-0.015, -0.21], text:msg, color:"#1a1a1a"});
+
+  return S;
+}
+
+/* ================== ДВИЖОК — ниже не редактировать ================== */
+
+const $ = id => document.getElementById(id);
+const cv = $("cv"), ctx = cv.getContext("2d");
+let p = {}, t = 0, playing = false, last = 0;
+PARAMS.forEach(q => p[q.key] = q.val);
+
+// --- ползунки параметров ---
+$("params").innerHTML = PARAMS.map(q => `
+  <div class="par">
+    <label for="p-${q.key}"><b>${q.sym}</b> — ${q.label}</label>
+    <input type="range" id="p-${q.key}" min="${q.min}" max="${q.max}"
+           step="${q.step}" value="${q.val}">
+    <output id="o-${q.key}"></output>
+  </div>`).join("");
+
+PARAMS.forEach(q => {
+  $("p-"+q.key).addEventListener("input", e => {
+    p[q.key] = +e.target.value; refresh();
+  });
+});
+
+// --- время ---
+if (TIME){ $("t").max = TIME.max; }
+else { $("playbar").style.display = "none"; }
+
+$("go").addEventListener("click", () => {
+  playing = !playing;
+  $("go").textContent = playing ? "❚❚ Пауза" : "▶︎ Пуск";
+  last = performance.now();
+  if (playing) requestAnimationFrame(tick);
+});
+$("rew").addEventListener("click", () => {
+  t = 0; playing = false; $("go").textContent = "▶︎ Пуск"; refresh();
+});
+$("t").addEventListener("input", e => {
+  t = +e.target.value; playing = false; $("go").textContent = "▶︎ Пуск"; refresh();
+});
+
+function tick(now){
+  if (!playing) return;
+  t += (now - last)/1000; last = now;
+  if (t >= TIME.max){ t = TIME.max; playing = false; $("go").textContent = "▶︎ Пуск"; }
+  refresh(); if (playing) requestAnimationFrame(tick);
+}
+
+// --- подстановка значений в формулу ---
+const num = x => Math.abs(x) >= 100 ? x.toFixed(0)
+               : Math.abs(x) >= 10 ? x.toFixed(1)
+               : Math.abs(x) >= 1  ? x.toFixed(2) : x.toFixed(3);
+
+function substitute(expr){
+  const map = PARAMS.map(q => [q.sym, p[q.key]])
+    .concat(Object.entries(CONST))
+    .sort((a,b) => b[0].length - a[0].length);
+  let out = expr;
+  for (const [sym, v] of map)
+    out = out.split(sym).join(num(v));
+  return out;
+}
+
+function refresh(){
+  const d = derive(p);
+  PARAMS.forEach(q => $("o-"+q.key).textContent = num(p[q.key]) + " " + q.unit);
+  if (TIME){ $("t").value = t; $("ot").textContent = t.toFixed(2)+" "+TIME.unit; }
+
+  $("formulas").innerHTML = formulas(p, d).map(f => `
+    <tr><td class="n">${f.name}</td>
+    <td class="f"><span class="sym">${f.expr}</span>
+    <span class="step"> = ${substitute(f.expr)} = </span>
+    <span class="res">${num(f.val)} ${f.unit}</span></td></tr>`).join("");
+
+  draw(scene(p, d, t));
+}
+
+// --- рисование ---
+function draw(items){
+  const dpr = devicePixelRatio||1, W = cv.clientWidth, H = cv.clientHeight;
+  if (cv.width !== W*dpr){ cv.width = W*dpr; cv.height = H*dpr; }
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+
+  const sc = Math.min(W/(VIEW.x1-VIEW.x0), H/(VIEW.y1-VIEW.y0));
+  const ox = (W - (VIEW.x1-VIEW.x0)*sc)/2, oy = (H - (VIEW.y1-VIEW.y0)*sc)/2;
+  const X = x => ox + (x - VIEW.x0)*sc;
+  const Y = y => H - oy - (y - VIEW.y0)*sc;
+
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const it of items){
+    ctx.setLineDash(it.dash || []);
+    ctx.lineWidth = it.width || 1.6;
+    ctx.strokeStyle = it.stroke || it.color || "#2a2a2a";
+    ctx.fillStyle = it.fill || "transparent";
+
+    if (it.type === "poly" || it.type === "line"){
+      const pts = it.pts || [it.a, it.b];
+      ctx.beginPath();
+      pts.forEach((q,i)=> i ? ctx.lineTo(X(q[0]),Y(q[1])) : ctx.moveTo(X(q[0]),Y(q[1])));
+      if (it.type === "poly") ctx.closePath();
+      if (it.fill) ctx.fill();
+      ctx.stroke();
+    }
+    else if (it.type === "rect"){
+      const a = (it.angle||0)*Math.PI/180;
+      ctx.save(); ctx.translate(X(it.c[0]), Y(it.c[1])); ctx.rotate(a);
+      ctx.beginPath();
+      ctx.rect(-it.w*sc/2, -it.h*sc/2, it.w*sc, it.h*sc);
+      ctx.fill(); ctx.stroke(); ctx.restore();
+    }
+    else if (it.type === "circle"){
+      ctx.beginPath(); ctx.arc(X(it.c[0]), Y(it.c[1]), it.r*sc, 0, 7);
+      ctx.fill(); ctx.stroke();
+    }
+    else if (it.type === "vector"){
+      const x1=X(it.from[0]), y1=Y(it.from[1]), x2=X(it.to[0]), y2=Y(it.to[1]);
+      const ang = Math.atan2(y2-y1, x2-x1), len = Math.hypot(x2-x1, y2-y1);
+      if (len < 3) continue;
+      ctx.strokeStyle = it.color; ctx.fillStyle = it.color; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+      const h = Math.min(9, len*0.35);
+      ctx.beginPath(); ctx.moveTo(x2,y2);
+      ctx.lineTo(x2 - h*Math.cos(ang-0.4), y2 - h*Math.sin(ang-0.4));
+      ctx.lineTo(x2 - h*Math.cos(ang+0.4), y2 - h*Math.sin(ang+0.4));
+      ctx.closePath(); ctx.fill();
+      if (it.label){
+        ctx.font = "600 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+        ctx.fillText(it.label, x2 + 7*Math.cos(ang), y2 + 7*Math.sin(ang) + 4);
+      }
+    }
+    else if (it.type === "arc"){
+      ctx.strokeStyle = "#6b6b6b"; ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.arc(X(it.c[0]), Y(it.c[1]), it.r*sc,
+              -it.from*Math.PI/180, -it.to*Math.PI/180, true);
+      ctx.stroke();
+      if (it.label){
+        const mid = (it.from + it.to)/2 * Math.PI/180;
+        ctx.fillStyle = "#6b6b6b";
+        ctx.font = "600 13px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+        ctx.fillText(it.label, X(it.c[0]) + it.r*sc*1.25*Math.cos(mid),
+                               Y(it.c[1]) - it.r*sc*1.25*Math.sin(mid) + 4);
+      }
+    }
+    else if (it.type === "hatch"){       // штриховка опоры
+      ctx.strokeStyle = "#9a968c"; ctx.lineWidth = 1;
+      const x1=X(it.a[0]), x2=X(it.b[0]), y=Y(it.a[1]);
+      ctx.beginPath(); ctx.moveTo(x1,y); ctx.lineTo(x2,y); ctx.stroke();
+      for (let x=x1; x<x2; x+=9){
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x-7,y+8); ctx.stroke();
+      }
+    }
+    else if (it.type === "text"){
+      ctx.fillStyle = it.color || "#1a1a1a";
+      ctx.font = "600 14px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(it.text, X(it.at[0]), Y(it.at[1]));
+      ctx.textAlign = "left";
+    }
+  }
+  ctx.setLineDash([]);
+}
+
+$("h1").textContent = TITLE; $("sub").textContent = SUB; $("note").textContent = NOTE;
+addEventListener("resize", refresh);
+refresh();
+</script>
+</body>
+</html>
