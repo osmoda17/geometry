@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Правильный тетраэдр: сечение CMK и угол между прямой и плоскостью</title>
+<script>
+window.MathJax = { tex:{inlineMath:[["\\(","\\)"]], displayMath:[["\\[","\\]"]]},
+                   options:{ignoreHtmlClass:"tex-wait"},
+                   svg:{fontCache:"global"} };
+</script>
+<script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+<style>
+  :root{--ink:#1a1a1a;--muted:#6b6b6b;--line:#d8d8d8;--bg:#fbfbf9;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    display:flex;flex-direction:column;align-items:center;}
+  #wrap{width:100%;max-width:760px;padding:18px 16px 60px}
+  h1{font-size:20px;font-weight:650;margin:0 0 14px;line-height:1.35}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:16px}
+  .task p{margin:0 0 9px}
+  .task p:last-child{margin-bottom:0}
+  .item{min-width:0;max-width:100%;overflow-wrap:anywhere}
+  mjx-container{max-width:100%}
+  mjx-container[display="true"]{overflow-x:auto;overflow-y:hidden}
+  #cv{width:100%;aspect-ratio:1/0.92;display:block;background:#fff;
+      border:1px solid var(--line);border-radius:10px;cursor:grab;touch-action:none}
+  #cv.drag{cursor:grabbing}
+  .axis{display:flex;align-items:center;gap:11px;margin-bottom:9px}
+  .axis label{font-weight:600;width:64px;white-space:nowrap;font-size:14px}
+  .axis input{flex:1;min-width:120px}
+  .axis output{width:50px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted);font-size:14px}
+  #rx{accent-color:#C2453D}#ry{accent-color:#2E7D32}#rz{accent-color:#1A4FA0}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .btns button{font:inherit;font-size:14px;padding:6px 13px;border:1px solid var(--line);
+         background:#fff;border-radius:7px;cursor:pointer}
+  .btns button:hover{background:#f2f2ef}
+  .steps{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);
+         display:flex;flex-direction:column;gap:7px;font-size:15px}
+  .steps label{cursor:pointer;display:flex;align-items:center;gap:8px}
+  .steps input{width:17px;height:17px;cursor:pointer}
+  .dn{margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .dn h3{font-size:15px;margin:0 0 6px;font-weight:650}
+  .dn .item{margin:0 0 5px}
+  .dn .blk{margin-top:12px}
+  .toggle{display:block;width:100%;text-align:left;font:inherit;font-size:16px;font-weight:650;
+    padding:12px 16px;border-radius:10px;border:2px solid;cursor:pointer;margin-bottom:12px}
+  .t-sol{background:#eaf1fb;border-color:#2b5bd7;color:#1a3f8f}
+  .t-hint{background:#eaf6ef;border-color:#1a8c5a;color:#146b45}
+  .t-err{background:#fdeceb;border-color:#c2453d;color:#9c322c}
+  .body{display:none}
+  .body.open{display:block}
+  .sol h3{font-size:16px;margin:18px 0 8px}
+  .sol h3:first-child{margin-top:0}
+  .sol ol{padding-left:22px;margin:8px 0}
+  .sol li{margin-bottom:8px}
+  .ans{background:#f4f7fd;border-left:4px solid #2b5bd7;padding:9px 13px;margin:12px 0 0;border-radius:0 7px 7px 0}
+  .hint ol,.err ol{padding-left:22px;margin:4px 0}
+  .hint li,.err li{margin-bottom:10px}
+  .hnote{font-size:13px;color:var(--muted);margin:10px 0 0}
+</style>
+<style data-fix="cveta">
+/* подписи под чертежом убраны: условие стоит прямо над ним.
+   Блоки не удаляем, а прячем — в них пишет скрипт самой модели. */
+.facts, .given, .dano, .legend, .key, .swatches, .usl-obozn { display:none !important; }
+/* но если внутри такого блока живут галочки показа построений —
+   он не легенда, а панель управления, и прятать его нельзя */
+.facts:has(input), .given:has(input), .dano:has(input), .legend:has(input),
+.key:has(input), .swatches:has(input), .usl-obozn:has(input) { display:block !important; }
+mjx-container { max-width:100% !important; }
+
+/* три нижние кнопки — всегда одни и те же цвета во всех задачах */
+button.cv-sol, .cv-sol > button, button.cv-q, .cv-q > button,
+button.cv-err, .cv-err > button {
+  border-width:1px !important; border-style:solid !important; font-weight:600 !important;
+}
+button.cv-sol, .cv-sol > button { background:#eaf1fb !important; border-color:#2b5bd7 !important; color:#1a3f8f !important; }
+button.cv-q,   .cv-q   > button { background:#eaf6ef !important; border-color:#1a8c5a !important; color:#146b45 !important; }
+button.cv-err, .cv-err > button { background:#fdeceb !important; border-color:#c2453d !important; color:#9c322c !important; }
+</style>
+<script data-fix="cveta">
+(function () {
+  function paint() {
+    document.querySelectorAll('button, summary').forEach(function (b) {
+      var t = (b.textContent || '').toLowerCase().replace(/ё/g, 'е');
+      if (/решени/.test(t))            b.classList.add('cv-sol');
+      else if (/вопрос/.test(t))       b.classList.add('cv-q');
+      else if (/ошибк|ошибок/.test(t)) b.classList.add('cv-err');
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { paint(); setTimeout(paint, 700); });
+  } else { paint(); setTimeout(paint, 700); }
+})();
+</script>
+<script data-fix="melko2">
+(function () {
+  if (!window.CanvasRenderingContext2D) return;
+  var P = CanvasRenderingContext2D.prototype;
+  var R_MAX = 4.0;     // радиус точки-вершины
+  var PX_MAX = 12.0;   // высота буквы подписи
+  var arc = P.arc;
+  P.arc = function (x, y, r, a, b, cc) {
+    // подрезаем только целые кружки — это точки-вершины.
+    // дуги (значок угла, скругления) и большие окружности
+    // (основание конуса, цилиндр) не трогаем.
+    var krug = Math.abs((b || 0) - (a || 0)) > 6.0;
+    if (typeof r === "number" && krug && r > R_MAX && r <= 25) r = R_MAX;
+    return arc.call(this, x, y, r, a, b, cc);
+  };
+  if (P.ellipse) {
+    var ell = P.ellipse;
+    P.ellipse = function (x, y, rx, ry, rot, a, b, cc) {
+      var krug = Math.abs((b || 0) - (a || 0)) > 6.0;
+      if (krug && rx > R_MAX && rx <= 25 && Math.abs(rx - ry) < 0.6) {
+        rx = R_MAX; ry = R_MAX;
+      }
+      return ell.call(this, x, y, rx, ry, rot, a, b, cc);
+    };
+  }
+  var d = Object.getOwnPropertyDescriptor(P, "font");
+  if (d && d.set) Object.defineProperty(P, "font", {
+    configurable: true,
+    get: function () { return d.get.call(this); },
+    set: function (v) {
+      d.set.call(this, String(v).replace(/([0-9]*\.?[0-9]+)px/, function (m, n) {
+        n = parseFloat(n);
+        return (n > PX_MAX ? PX_MAX : n) + "px";
+      }));
+    }
+  });
+})();
+</script>
+</head>
+<body>
+<div id="wrap">
+
+<h1>Правильный тетраэдр: сечение через вершину и две точки на рёбрах</h1>
+
+<div class="card task">
+  <p>В правильном тетраэдре \(ABCD\) все рёбра равны \(6\). На рёбрах \(AB\) и \(AD\) отмечены точки \(M\) и \(K\) соответственно так, что \(AM = AK = 4\).</p>
+  <p><b>а)</b> Докажите, что плоскость \(CMK\) делит тетраэдр \(ABCD\) на два многогранника, объёмы которых относятся как \(5:4\).</p>
+  <p><b>б)</b> Найдите косинус угла между прямой \(AC\) и плоскостью \(CMK\).</p>
+</div>
+
+<div class="card">
+  <canvas id="cv"></canvas>
+
+  <div style="margin-top:14px">
+    <div class="axis"><label for="rx">ось X</label>
+      <input type="range" id="rx" min="0" max="360" step="1" value="16"><output id="o-rx">16°</output></div>
+    <div class="axis"><label for="ry">ось Y</label>
+      <input type="range" id="ry" min="0" max="360" step="1" value="0"><output id="o-ry">0°</output></div>
+    <div class="axis"><label for="rz">ось Z</label>
+      <input type="range" id="rz" min="0" max="360" step="1" value="160"><output id="o-rz">160°</output></div>
+  </div>
+
+  <div class="btns">
+    <button id="b-in">+</button>
+    <button id="b-out">&minus;</button>
+    <button id="b-reset">Сброс вида</button>
+  </div>
+
+  <div class="steps">
+    <label><input type="checkbox" id="c-sec" checked> сечение</label>
+    <label><input type="checkbox" id="c-a" checked> построение к пункту а)</label>
+    <label><input type="checkbox" id="c-b" checked> построение к пункту б)</label>
+    <label><input type="checkbox" id="c-aux" checked> вспомогательные линии</label>
+  </div>
+
+  <div class="dn">
+    <h3>Дано</h3>
+    <div class="item">\(ABCD\) — правильный тетраэдр</div>
+    <div class="item">\(AB = BC = CA = AD = BD = CD = 6\)</div>
+    <div class="item">\(M \in AB,\ K \in AD\)</div>
+    <div class="item">\(AM = AK = 4\)</div>
+    <div class="blk">
+      <h3>Доказать</h3>
+      <div class="item">плоскость \(CMK\) делит тетраэдр \(ABCD\) на два многогранника, объёмы которых относятся как \(5:4\)</div>
+    </div>
+    <div class="blk">
+      <h3>Найти</h3>
+      <div class="item">косинус угла между прямой \(AC\) и плоскостью \(CMK\)</div>
+    </div>
+  </div>
+</div>
+
+<button class="toggle t-sol" data-t="sol">Показать решение</button>
+<div class="card body sol tex-wait" id="sol">
+
+  <h3>а) Отношение объёмов</h3>
+  <p>Точка \(C\) — вершина тетраэдра, точки \(M\) и \(K\) лежат на рёбрах \(AB\) и \(AD\). Отрезок \(CM\) лежит в грани \(ABC\), отрезок \(CK\) — в грани \(ACD\), отрезок \(MK\) — в грани \(ABD\). Значит, сечением тетраэдра плоскостью \(CMK\) служит треугольник \(CMK\), и он разбивает тетраэдр на две части: тетраэдр \(AMKC\) и многогранник \(MBDKC\).</p>
+
+  <p>Сравним объём тетраэдра \(AMKC\) с объёмом всего тетраэдра, взяв в обоих за основание грань в плоскости \(ABD\):</p>
+  <ol>
+    <li>Тетраэдры \(AMKC\) и \(ABDC\) имеют общую вершину \(C\), а их основания — треугольники \(AMK\) и \(ABD\) — лежат в одной плоскости \(ABD\). Поэтому высоты, опущенные из \(C\) на плоскости оснований, — это один и тот же отрезок. По формуле объёма пирамиды \(V=\tfrac13 S h\) получаем
+      \[\frac{V_{AMKC}}{V_{ABDC}}=\frac{S_{AMK}}{S_{ABD}}.\]</li>
+    <li>Углы \(MAK\) и \(BAD\) совпадают: это один и тот же угол при вершине \(A\), так как \(M\) лежит на луче \(AB\), а \(K\) — на луче \(AD\). По формуле площади треугольника через две стороны и угол между ними
+      \[\frac{S_{AMK}}{S_{ABD}}=\frac{\tfrac12\,AM\cdot AK\cdot\sin\angle MAK}{\tfrac12\,AB\cdot AD\cdot\sin\angle BAD}
+        =\frac{AM\cdot AK}{AB\cdot AD}=\frac{4\cdot 4}{6\cdot 6}=\frac49 .\]</li>
+    <li>Значит \(V_{AMKC}=\dfrac49 V\), где \(V=V_{ABCD}\), а на вторую часть остаётся
+      \[V_{MBDKC}=V-\frac49V=\frac59V.\]</li>
+    <li>Отсюда
+      \[V_{MBDKC}:V_{AMKC}=\frac59V:\frac49V=5:4 .\]</li>
+  </ol>
+  <p>Что и требовалось доказать.</p>
+  <div class="ans"><b>Ответ (а):</b> объёмы частей относятся как \(5:4\).</div>
+
+  <h3>б) Угол между прямой \(AC\) и плоскостью \(CMK\)</h3>
+  <p>Пусть \(P\) — середина отрезка \(MK\), а \(N\) — середина ребра \(BD\).</p>
+  <ol>
+    <li><b>\(AP \perp MK\).</b> В треугольнике \(AMK\) стороны \(AM=AK=4\), то есть он равнобедренный. По свойству равнобедренного треугольника медиана \(AP\), проведённая к основанию \(MK\), является и высотой, значит \(AP \perp MK\).</li>
+
+    <li><b>Точка \(P\) лежит на медиане \(AN\) треугольника \(ABD\) и \(AP=2\sqrt3\).</b>
+      В треугольниках \(AMK\) и \(ABD\) угол \(A\) общий и
+      \[\frac{AM}{AB}=\frac{AK}{AD}=\frac46=\frac23 ,\]
+      поэтому по второму признаку подобия треугольников (по двум пропорциональным сторонам и углу между ними) \(\triangle AMK \sim \triangle ABD\) с коэффициентом \(\tfrac23\). При этом подобии (это гомотетия с центром \(A\) и коэффициентом \(\tfrac23\)) середина \(N\) стороны \(BD\) переходит в середину \(P\) стороны \(MK\). Следовательно, точка \(P\) лежит на отрезке \(AN\) и
+      \[AP=\frac23\,AN .\]
+      Треугольник \(ABD\) равносторонний со стороной \(6\), его медиана \(AN\) — одновременно высота, поэтому
+      \[AN=\frac{6\sqrt3}{2}=3\sqrt3,\qquad AP=\frac23\cdot 3\sqrt3=2\sqrt3 .\]</li>
+
+    <li><b>\(P\) — точка пересечения медиан треугольника \(ABD\).</b> Действительно, \(P\) лежит на медиане \(AN\) и \(AP:PN = 2\sqrt3:(3\sqrt3-2\sqrt3)=2:1\), а точка пересечения медиан делит каждую медиану от вершины в отношении \(2:1\).</li>
+
+    <li><b>\(CP \perp\) плоскости \(ABD\).</b> Пусть \(CO\) — высота тетраэдра, \(O\in(ABD)\). Наклонные \(CA\), \(CB\), \(CD\) равны (все рёбра равны \(6\)), а равные наклонные, проведённые из одной точки, имеют равные проекции, поэтому \(OA=OB=OD\), то есть \(O\) — центр описанной окружности треугольника \(ABD\). Для равностороннего треугольника центр описанной окружности совпадает с точкой пересечения медиан, значит \(O=P\). Итак, \(CP \perp (ABD)\).</li>
+
+    <li><b>\(AP \perp\) плоскости \(CMK\).</b> Прямая \(AP\) лежит в плоскости \(ABD\), а \(CP\) перпендикулярна этой плоскости, поэтому \(CP \perp AP\). Вместе с пунктом 1 имеем: \(AP \perp MK\) и \(AP \perp CP\). Прямые \(MK\) и \(CP\) пересекаются в точке \(P\) и обе лежат в плоскости \(CMK\) (точки \(C\), \(M\), \(K\), \(P\) — её точки). По признаку перпендикулярности прямой и плоскости \(AP \perp (CMK)\).</li>
+
+    <li><b>Искомый угол — это \(\angle ACP\).</b> Так как \(AP\perp(CMK)\), точка \(P\) — ортогональная проекция точки \(A\) на плоскость \(CMK\). Точка \(C\) сама лежит в этой плоскости, поэтому \(CP\) — проекция наклонной \(CA\) на плоскость \(CMK\). Углом между прямой \(AC\) и плоскостью \(CMK\) по определению называется угол между этой прямой и её проекцией на плоскость, то есть \(\angle ACP\).</li>
+
+    <li><b>Вычисление.</b> Треугольник \(ACP\) прямоугольный с прямым углом при вершине \(P\) (так как \(AP\perp CP\)). В нём \(AC=6\) — ребро тетраэдра, \(AP=2\sqrt3\). По теореме Пифагора
+      \[CP=\sqrt{AC^{2}-AP^{2}}=\sqrt{36-12}=\sqrt{24}=2\sqrt6 .\]
+      Тогда
+      \[\cos\angle ACP=\frac{CP}{AC}=\frac{2\sqrt6}{6}=\frac{\sqrt6}{3}.\]</li>
+  </ol>
+  <div class="ans"><b>Ответ (б):</b> \(\dfrac{\sqrt6}{3}\).</div>
+</div>
+
+<button class="toggle t-hint" data-t="hint">Наводящие вопросы</button>
+<div class="card body hint tex-wait" id="hint">
+  <ol>
+    <li>Какая фигура получается в сечении тетраэдра плоскостью \(CMK\) и почему у неё ровно три стороны? В каких гранях лежит каждая сторона сечения?</li>
+    <li>На какие два многогранника разбивается тетраэдр? У какого из них форма снова тетраэдра, а у какого — нет?</li>
+    <li>Если у двух пирамид общая вершина, а основания лежат в одной плоскости, то что можно сказать про их высоты? Как тогда отношение объёмов связано с отношением площадей оснований?</li>
+    <li>Треугольник \(AMK\) равнобедренный — что это даёт для медианы, проведённой из вершины \(A\) к стороне \(MK\)?</li>
+    <li>Куда попадает основание высоты правильного тетраэдра, опущенной из вершины \(C\)? Как это доказать через равные наклонные \(CA\), \(CB\), \(CD\)? И куда при этом попадает середина отрезка \(MK\)?</li>
+    <li>По какому признаку можно доказать, что прямая перпендикулярна плоскости? Какие две пересекающиеся прямые плоскости \(CMK\) здесь удобно взять?</li>
+    <li>Что называется углом между прямой и плоскостью, и какой отрезок играет роль проекции наклонной \(CA\)?</li>
+  </ol>
+</div>
+
+<button class="toggle t-err" data-t="err">Распространённые ошибки</button>
+<div class="card body err tex-wait" id="err">
+  <ol>
+    <li><b>Считают отношение объёмов равным отношению рёбер \(4:6\).</b> Уменьшаются сразу два измерения основания (\(AM\) и \(AK\)), поэтому площадь основания уменьшается в \(\left(\tfrac23\right)^2=\tfrac49\) раза, а не в \(\tfrac23\). Проверка: меньшая часть составляет \(\tfrac49\) тетраэдра, а не \(\tfrac23\).</li>
+    <li><b>Записывают ответ \(5:4\) в обратном порядке.</b> Отрезанный тетраэдр \(AMKC\) — это \(\tfrac49\) объёма, то есть <i>меньшая</i> часть. В отношении \(5:4\) первым стоит объём многогранника \(MBDKC\). Полезно сразу сказать словами, какая часть больше.</li>
+    <li><b>Вместо угла между прямой и плоскостью ищут угол между прямыми или двугранный угол.</b> Угол между прямой \(AC\) и плоскостью \(CMK\) — это угол между \(AC\) и её <i>проекцией</i> на эту плоскость, то есть \(\angle ACP\). Частая подмена — взять угол \(\angle ACM\) или угол между \(AC\) и линией \(MK\); это другие углы.</li>
+    <li><b>Находят синус и записывают его как ответ.</b> Стандартная формула \(\sin\varphi = \dfrac{d(A,(CMK))}{AC}\) даёт \(\sin\varphi=\dfrac{2\sqrt3}{6}=\dfrac{\sqrt3}{3}\). В задаче спрошен косинус, и его нужно досчитать: \(\cos\varphi=\sqrt{1-\tfrac13}=\dfrac{\sqrt6}{3}\).</li>
+    <li><b>Считают, что основание высоты тетраэдра — середина стороны основания или середина \(MK\) «просто так».</b> То, что проекция вершины \(C\) попадает именно в точку пересечения медиан треугольника \(ABD\), нужно обосновать равенством наклонных \(CA=CB=CD\); а совпадение этой точки с серединой \(MK\) — следствие того, что \(AM:AB=AK:AD=2:3\). Без этих двух шагов перпендикулярность \(AP\perp(CMK)\) не доказана.</li>
+  </ol>
+  <p class="hnote">Отдельно: не забывайте, что точка \(P\) лежит <i>внутри</i> отрезка \(MK\) и внутри треугольника \(ABD\) — иначе прямой угол в треугольнике \(ACP\) построен неверно.</p>
+</div>
+
+</div>
+
+<script>
+var CONFIG = {"points": {"A": [0, 0, 0], "B": [6, 0, 0], "D": [3, 5.1961524227, 0], "C": [3, 1.7320508076, 4.8989794856], "M": [4, 0, 0], "K": [2, 3.4641016151, 0], "P": [3, 1.7320508076, 0], "N": [4.5, 2.5980762114, 0]}, "faces": {"ABD": ["A", "B", "D"], "ABC": ["A", "B", "C"], "ACD": ["A", "C", "D"], "BCD": ["B", "C", "D"]}, "center": [3, 1.7320508076, 1.2247448714], "span": 8.6};
+
+var P = CONFIG.points, FACES = CONFIG.faces, CEN = CONFIG.center;
+
+/* нормали граней наружу */
+var vnames = Object.keys(FACES).reduce(function(a,f){ return a.concat(FACES[f]); },[]);
+vnames = vnames.filter(function(v,i,s){return s.indexOf(v)===i;});
+var bc=[0,0,0];
+vnames.forEach(function(n){ bc[0]+=P[n][0]/vnames.length; bc[1]+=P[n][1]/vnames.length; bc[2]+=P[n][2]/vnames.length; });
+var NORM={};
+Object.keys(FACES).forEach(function(f){
+  var vs=FACES[f], p=P[vs[0]], q=P[vs[1]], r=P[vs[2]];
+  var u=[q[0]-p[0],q[1]-p[1],q[2]-p[2]], v=[r[0]-p[0],r[1]-p[1],r[2]-p[2]];
+  var n=[u[1]*v[2]-u[2]*v[1], u[2]*v[0]-u[0]*v[2], u[0]*v[1]-u[1]*v[0]];
+  var o=[p[0]-bc[0],p[1]-bc[1],p[2]-bc[2]];
+  if(n[0]*o[0]+n[1]*o[1]+n[2]*o[2]<0) n=[-n[0],-n[1],-n[2]];
+  NORM[f]=n;
+});
+var EDGES={};
+Object.keys(FACES).forEach(function(f){
+  var vs=FACES[f];
+  for(var i=0;i<vs.length;i++){
+    var k=[vs[i],vs[(i+1)%vs.length]].sort().join("|");
+    (EDGES[k]=EDGES[k]||[]).push(f);
+  }
+});
+
+var CA=Math.cos(0.55), SA=Math.sin(0.55), CE=Math.cos(0.30), SE=Math.sin(0.30);
+var DEF={rx:16, ry:0, rz:160, zoom:1};
+var rx=DEF.rx, ry=DEF.ry, rz=DEF.rz, zoom=DEF.zoom;
+
+function spin(p){                       /* три поворота: Z, затем Y, затем X */
+  var x=p[0], y=p[1], z=p[2], c, s, t;
+  c=Math.cos(rz*Math.PI/180); s=Math.sin(rz*Math.PI/180); t=x*c-y*s; y=x*s+y*c; x=t;
+  c=Math.cos(ry*Math.PI/180); s=Math.sin(ry*Math.PI/180); t=x*c+z*s; z=-x*s+z*c; x=t;
+  c=Math.cos(rx*Math.PI/180); s=Math.sin(rx*Math.PI/180); t=y*c-z*s; z=y*s+z*c; y=t;
+  return [x,y,z];
+}
+function cam(q){
+  var x=q[0], y=q[1], z=q[2];
+  return { x:x*CA-y*SA, depth:(x*SA+y*CA)*CE-z*SE, up:(x*SA+y*CA)*SE+z*CE };
+}
+function view(p){ return cam(spin([p[0]-CEN[0], p[1]-CEN[1], p[2]-CEN[2]])); }
+function viewN(n){ return cam(spin(n)); }
+
+var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+function $(id){ return document.getElementById(id); }
+function on(id){ return $(id).checked; }
+
+var COL={ ink:"#222", hid:"#b9b9b9", sec:"#1A4FA0", secf:"rgba(76,139,245,0.30)",
+          afill:"rgba(224,138,46,0.22)", aline:"#B96A15", red:"#C2453D", grn:"#2E7D32", aux:"#8a8a8a" };
+
+function draw(){
+  var dpr=window.devicePixelRatio||1, w=cv.clientWidth, h=cv.clientHeight;
+  if(cv.width!==Math.round(w*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+  ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+
+  var scale=Math.min(w,h)/CONFIG.span*zoom, cx=w/2, cy=h/2;
+  function S(n){ var q=view(Array.isArray(n)?n:P[n]); return {x:cx+q.x*scale, y:cy-q.up*scale}; }
+
+  var vis={};
+  Object.keys(NORM).forEach(function(f){ vis[f]=viewN(NORM[f]).depth<0; });
+
+  /* габарит фигуры на экране — для размера значка прямого угла */
+  var xs=[], ys=[];
+  vnames.forEach(function(n){ var p=S(n); xs.push(p.x); ys.push(p.y); });
+  var extent=Math.max(Math.max.apply(null,xs)-Math.min.apply(null,xs),
+                      Math.max.apply(null,ys)-Math.min.apply(null,ys));
+  var sq=extent/15;
+
+  var secOn=on("c-sec"), aOn=on("c-a"), bOn=on("c-b"), auxOn=on("c-aux");
+
+  edges(false);
+
+  if(aOn) poly(["A","M","K"], COL.afill, COL.aline, [4,3]);
+  if(secOn) poly(["C","M","K"], COL.secf, COL.sec, []);
+
+  edges(true);
+
+  if(secOn){
+    seg(S("C"),S("M"),COL.sec,[],2.0);
+    seg(S("C"),S("K"),COL.sec,[],2.0);
+    seg(S("M"),S("K"),COL.sec,[],2.0);
+  }
+  if(auxOn){
+    seg(S("A"),S("N"),COL.aux,[5,4],1.3);
+  }
+  if(bOn){
+    seg(S("A"),S("C"),COL.grn,[],2.1);
+    seg(S("C"),S("P"),COL.red,[],1.9);
+    seg(S("A"),S("P"),COL.red,[5,4],1.7);
+  }
+  if(bOn) rightAngle(S("P"),S("A"),S("C"),sq,COL.red);
+  if(auxOn && secOn) rightAngle(S("P"),S("A"),S("M"),sq,COL.aux);
+
+  var shown=["A","B","C","D"];
+  if(secOn||aOn) shown=shown.concat(["M","K"]);
+  if(bOn||auxOn) shown.push("P");
+  if(auxOn) shown.push("N");
+  shown=shown.filter(function(v,i,s){return s.indexOf(v)===i;});
+
+  var rdot=Math.max(2, Math.min(2.6, scale/34));
+  var fs=Math.max(11, Math.min(12.5, scale/6));
+  shown.forEach(function(k){ var p=S(k); dot(p, COL.ink, rdot); });
+  ctx.font="600 "+fs.toFixed(1)+"px -apple-system,Segoe UI,Roboto,Arial,sans-serif";
+  ctx.fillStyle=COL.ink;
+  shown.forEach(function(k){
+    var p=S(k), dx=p.x-cx, dy=p.y-cy, L=Math.hypot(dx,dy)||1, off=fs*0.95+3;
+    ctx.fillText(k, p.x+dx/L*off-fs*0.30, p.y+dy/L*off+fs*0.36);
+  });
+
+  function edges(visible){
+    Object.keys(EDGES).forEach(function(key){
+      var fs2=EDGES[key], onv=fs2.some(function(f){return vis[f];});
+      if(onv!==visible) return;
+      var ab=key.split("|");
+      seg(S(ab[0]),S(ab[1]), visible?COL.ink:COL.hid, visible?[]:[5,4], visible?1.8:1.1);
+    });
+  }
+  function seg(p,q,c,dash,lw){
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(q.x,q.y);
+    ctx.strokeStyle=c; ctx.lineWidth=lw||1.6; ctx.setLineDash(dash||[]);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  function poly(names,fill,stroke,dash){
+    var pts=names.map(S);
+    ctx.beginPath();
+    pts.forEach(function(p,i){ i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y); });
+    ctx.closePath(); ctx.fillStyle=fill; ctx.fill();
+    ctx.strokeStyle=stroke; ctx.lineWidth=1.6; ctx.setLineDash(dash||[]);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+  function dot(p,c,r){ ctx.beginPath(); ctx.arc(p.x,p.y,r,0,7); ctx.fillStyle=c; ctx.fill(); }
+  function rightAngle(v,p1,p2,size,col){
+    var u1=[p1.x-v.x,p1.y-v.y], u2=[p2.x-v.x,p2.y-v.y];
+    var n1=Math.hypot(u1[0],u1[1]), n2=Math.hypot(u2[0],u2[1]);
+    if(n1<1e-6||n2<1e-6) return;
+    u1=[u1[0]/n1*size,u1[1]/n1*size]; u2=[u2[0]/n2*size,u2[1]/n2*size];
+    ctx.beginPath();
+    ctx.moveTo(v.x+u1[0], v.y+u1[1]);
+    ctx.lineTo(v.x+u1[0]+u2[0], v.y+u1[1]+u2[1]);
+    ctx.lineTo(v.x+u2[0], v.y+u2[1]);
+    ctx.strokeStyle=col; ctx.lineWidth=1.1; ctx.setLineDash([]); ctx.stroke();
+  }
+}
+
+function norm(a){ a=a%360; return a<0?a+360:a; }
+function pushSliders(){
+  $("rx").value=Math.round(rx); $("ry").value=Math.round(ry); $("rz").value=Math.round(rz);
+  $("o-rx").textContent=Math.round(rx)+"°";
+  $("o-ry").textContent=Math.round(ry)+"°";
+  $("o-rz").textContent=Math.round(rz)+"°";
+}
+function fromSliders(){
+  rx=+$("rx").value; ry=+$("ry").value; rz=+$("rz").value;
+  $("o-rx").textContent=Math.round(rx)+"°";
+  $("o-ry").textContent=Math.round(ry)+"°";
+  $("o-rz").textContent=Math.round(rz)+"°";
+  draw();
+}
+["rx","ry","rz"].forEach(function(id){ $(id).addEventListener("input", fromSliders); });
+["c-sec","c-a","c-b","c-aux"].forEach(function(id){ $(id).addEventListener("change", draw); });
+
+/* ---- вращение мышью и пальцем ---- */
+var drag=false, lx=0, ly=0, pointers={};
+function startDrag(x,y){ drag=true; lx=x; ly=y; cv.classList.add("drag"); }
+function moveDrag(x,y){
+  if(!drag) return;
+  rz=norm(rz+(x-lx)*0.45);
+  rx=norm(rx+(y-ly)*0.45);
+  lx=x; ly=y; pushSliders(); draw();
+}
+function endDrag(){ drag=false; cv.classList.remove("drag"); }
+
+cv.addEventListener("pointerdown", function(e){
+  cv.setPointerCapture(e.pointerId);
+  pointers[e.pointerId]={x:e.clientX,y:e.clientY};
+  if(Object.keys(pointers).length===1) startDrag(e.clientX,e.clientY);
+  else endDrag();
+  e.preventDefault();
+});
+cv.addEventListener("pointermove", function(e){
+  var ids=Object.keys(pointers);
+  if(ids.length===2 && pointers[e.pointerId]){
+    var prev={};
+    ids.forEach(function(i){ prev[i]={x:pointers[i].x,y:pointers[i].y}; });
+    var d0=Math.hypot(prev[ids[0]].x-prev[ids[1]].x, prev[ids[0]].y-prev[ids[1]].y);
+    pointers[e.pointerId]={x:e.clientX,y:e.clientY};
+    var d1=Math.hypot(pointers[ids[0]].x-pointers[ids[1]].x, pointers[ids[0]].y-pointers[ids[1]].y);
+    if(d0>0){ setZoom(zoom*d1/d0); }
+    return;
+  }
+  if(pointers[e.pointerId]) pointers[e.pointerId]={x:e.clientX,y:e.clientY};
+  moveDrag(e.clientX, e.clientY);
+});
+function up(e){ delete pointers[e.pointerId]; if(Object.keys(pointers).length===0) endDrag(); }
+cv.addEventListener("pointerup", up);
+cv.addEventListener("pointercancel", up);
+cv.addEventListener("pointerleave", function(e){ if(!drag) return; });
+
+function setZoom(z){ zoom=Math.max(0.55, Math.min(3.2, z)); draw(); }
+cv.addEventListener("wheel", function(e){
+  e.preventDefault();
+  setZoom(zoom*(e.deltaY<0?1.09:1/1.09));
+}, {passive:false});
+
+$("b-in").addEventListener("click", function(){ setZoom(zoom*1.15); });
+$("b-out").addEventListener("click", function(){ setZoom(zoom/1.15); });
+$("b-reset").addEventListener("click", function(){
+  rx=DEF.rx; ry=DEF.ry; rz=DEF.rz; zoom=DEF.zoom; pushSliders(); draw();
+});
+
+/* ---- сворачиваемые блоки ---- */
+var LAB={sol:["Показать решение","Скрыть решение"],
+         hint:["Наводящие вопросы","Скрыть наводящие вопросы"],
+         err:["Распространённые ошибки","Скрыть распространённые ошибки"]};
+document.querySelectorAll(".toggle").forEach(function(b){
+  b.addEventListener("click", function(){
+    var t=b.dataset.t, el=$(t), open=el.classList.toggle("open");
+    b.textContent=LAB[t][open?1:0];
+    if(open && el.classList.contains("tex-wait")){
+      el.classList.remove("tex-wait");
+      if(window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]);
+    }
+  });
+});
+
+window.addEventListener("resize", draw);
+pushSliders();
+draw();
+</script>
+</body>
+</html>
