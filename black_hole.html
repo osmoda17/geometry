@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Полёт к чёрной дыре</title>
+<style>
+:root{
+  --bg:#03040a; --ink:#F3F1EA; --t2:#B4BAC6; --t3:#7D8594;
+  --glass:rgba(9,12,20,.72); --line:rgba(255,255,255,.12);
+  --gold:#F0B36A; --hot:#F07A45; --blue:#8DB9E0; --ok:#7FD39A; --bad:#F08A7A;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --serif:'Times New Roman',Georgia,serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+canvas#sky{position:fixed;inset:0;width:100%;height:100%;display:block}
+.veil{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(0,0,0,.55) 100%)}
+#black{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .4s}
+
+/* верхняя панель */
+.top{position:fixed;z-index:5;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 22px;background:linear-gradient(rgba(3,4,10,.7),transparent)}
+.brand{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#D9DDE4}
+.brand i{width:22px;height:22px;border-radius:50%;background:#000;box-shadow:0 0 0 1.5px var(--gold),0 0 12px rgba(240,179,106,.6)}
+.acts{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.btn{display:inline-flex;align-items:center;gap:7px;min-height:34px;padding:6px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(10,13,22,.6);font-size:12.5px;backdrop-filter:blur(10px)}
+.btn:hover{background:rgba(255,255,255,.1)}
+.btn[aria-pressed="false"]{color:var(--t3)}
+.btn b{font-weight:600;color:var(--gold)}
+
+/* комментарий */
+.card{position:fixed;z-index:4;left:22px;bottom:96px;width:min(440px,calc(100vw - 44px));padding:18px 20px 16px;border:1px solid var(--line);border-radius:14px;background:var(--glass);backdrop-filter:blur(14px);transition:opacity .5s,transform .5s}
+.card.fade{opacity:0;transform:translateY(8px)}
+.card .st{font-size:10.5px;opacity:.85;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
+.card h2{margin:4px 0 6px;font-size:28px;font-weight:650;letter-spacing:-.02em;line-height:1.1}
+.card .lead{font-size:17px;line-height:1.4;color:#fff;margin:0}
+.card .key{display:flex;align-items:baseline;gap:10px;margin-top:12px}
+.card .key b{font:italic 600 34px/1 var(--serif);color:var(--gold);text-shadow:0 0 18px rgba(240,179,106,.45);white-space:nowrap}
+.card .key b sub,.card .key b sup{font-size:.55em}
+.card .key span{font-size:12.5px;color:var(--t2);line-height:1.3}
+.card .key:empty,.card .key.none{display:none}
+.card .more{margin-top:12px;padding:0;border:0;background:none;color:var(--t3);font-size:12.5px;letter-spacing:.02em}
+.card .more:hover{color:var(--gold)}
+.card .det{display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.card.open .det{display:block}
+.card.open{max-height:calc(100vh - 190px);overflow:auto}
+/* появление: заголовок, фраза, цифра — друг за другом */
+.card.in h2,.card.in .lead,.card.in .key{animation:rise .6s cubic-bezier(.2,.7,.2,1) backwards}
+.card.in .lead{animation-delay:.12s}.card.in .key{animation-delay:.28s}
+.card.in .key b{display:inline-block;animation:glow 1.6s ease-out .3s}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes glow{0%{transform:scale(.92)}40%{transform:scale(1.06);text-shadow:0 0 30px rgba(240,179,106,.9)}100%{transform:none}}
+.card .det p{margin:0;color:#DCE0E7;font-size:14px}
+.card .fx{margin-top:10px;padding:8px 11px;border-left:2px solid var(--gold);background:rgba(240,179,106,.08);border-radius:0 8px 8px 0;font-size:13px;color:var(--t2)}
+.card .fm{margin-top:10px;font:italic 19px var(--serif);color:#fff;text-align:center}
+.card .fm sub,.card .fm sup{font-size:.68em}
+
+/* приборы */
+.hud{position:fixed;z-index:4;right:22px;top:76px;width:250px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--glass);backdrop-filter:blur(14px)}
+.hud h3{margin:0 0 8px;font-size:10.5px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--t3)}
+.row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-top:1px solid rgba(255,255,255,.07)}
+.row:first-of-type{border-top:0}
+.row span{font-size:12px;color:var(--t2)}
+.row b{font:600 15px var(--sans);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.row b small{font-weight:400;color:var(--t3);font-size:11.5px}
+.row b sup{font-size:.7em}
+.bar{height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:-2px;overflow:hidden}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--gold),var(--hot));width:0}
+
+/* шкала полёта */
+.dock{position:fixed;z-index:5;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;padding:14px 22px 18px;background:linear-gradient(transparent,rgba(3,4,10,.8))}
+.play{width:44px;height:44px;flex:none;border-radius:50%;border:1px solid var(--line);background:rgba(255,255,255,.08);font-size:16px}
+.track{position:relative;flex:1;height:34px;cursor:pointer}
+.track .ln{position:absolute;left:0;right:0;top:16px;height:2px;background:rgba(255,255,255,.15);border-radius:1px}
+.track .pg{position:absolute;left:0;top:16px;height:2px;background:var(--gold);border-radius:1px;width:0}
+.track .tk{position:absolute;top:11px;width:12px;height:12px;margin-left:-6px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);background:var(--bg)}
+.track .tk.on{border-color:var(--gold);background:var(--gold)}
+.track .tk:hover::after{content:attr(data-t);position:absolute;bottom:18px;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:11.5px;padding:3px 7px;border-radius:6px;background:rgba(10,13,22,.9);border:1px solid var(--line)}
+.spd{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none}
+.spd button{border:0;background:transparent;padding:6px 9px;font-size:12px;color:var(--t2)}
+.spd button.on{background:rgba(240,179,106,.18);color:var(--gold)}
+
+/* заставка и финал */
+.ov{position:fixed;z-index:10;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;background:radial-gradient(ellipse at center,rgba(3,4,10,.55),rgba(3,4,10,.92));transition:opacity .6s}
+.ov.hide{opacity:0;pointer-events:none}
+.box{width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:30px 32px;border:1px solid var(--line);border-radius:18px;background:rgba(9,12,20,.86);backdrop-filter:blur(16px)}
+.box .eb{font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--gold)}
+.box h1{margin:8px 0 12px;font-size:clamp(30px,5vw,44px);font-weight:600;letter-spacing:-.03em;line-height:1.05}
+.box p{color:#D5DAE2;margin:0 0 12px}
+.box ul{margin:0 0 18px;padding-left:18px;color:var(--t2);font-size:14px}
+.go{display:inline-flex;align-items:center;gap:10px;padding:12px 22px;border:0;border-radius:10px;background:linear-gradient(135deg,#F5C27F,#EE8148);color:#1A0E05;font-weight:700;font-size:15px}
+.go:hover{filter:brightness(1.07)}
+.note{margin-top:14px;font-size:12px;color:var(--t3)}
+.q{margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+.q .qt{font-weight:600;margin-bottom:8px}
+.q .op{display:flex;flex-wrap:wrap;gap:8px}
+.q .op button{padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.05);font-size:13.5px;text-align:left}
+.q .op button:hover:not(:disabled){background:rgba(255,255,255,.11)}
+.q .op button:disabled{cursor:default}
+.q .op button.ok{border-color:var(--ok);background:rgba(127,211,154,.16)}
+.q .op button.no{border-color:var(--bad);background:rgba(240,138,122,.14)}
+.q .ex{margin-top:7px;font-size:13px;color:var(--t2);display:none}
+.q.done .ex{display:block}
+.score{margin-top:18px;font-size:16px;font-weight:600;color:var(--gold)}
+.fin-acts{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+
+@media (max-width:760px){
+  .top{padding:10px 12px}.brand span{display:none}.acts{gap:5px}.btn{padding:6px 8px;font-size:11.5px}#bFS .t{display:none}
+  .hud{top:60px;right:10px;left:10px;width:auto;display:grid;grid-template-columns:1fr 1fr;column-gap:14px;padding:10px 12px}
+  .hud h3{grid-column:1/-1}.row{padding:4px 0}.row:nth-of-type(2){border-top:0}.bar{display:none}
+  .card{left:10px;bottom:84px;width:calc(100vw - 20px);padding:13px 14px}.card h2{font-size:21px}.card .lead{font-size:15px}.card .key b{font-size:26px}
+  .dock{padding:10px 12px 14px;gap:10px}.spd button{padding:6px 7px}
+  .box{padding:22px 20px}
+}
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<div class="veil"></div>
+<div id="black"></div>
+
+<header class="top">
+  <div class="brand"><i></i><span>Физика · Общая теория относительности</span></div>
+  <div class="acts">
+    <button class="btn" id="bMass" type="button" title="Сменить массу чёрной дыры">Масса: <b id="massLbl">10 M☉</b></button>
+    <button class="btn" id="bMusic" type="button" aria-pressed="true">♪ Музыка</button>
+    <button class="btn" id="bText" type="button" aria-pressed="true">Комментарии</button>
+    <button class="btn" id="bFS" type="button" title="Во весь экран (клавиша F)">⤢<span class="t"> Во весь экран</span></button>
+  </div>
+</header>
+
+<aside class="hud" aria-label="Приборы">
+  <h3>Приборы зонда</h3>
+  <div class="row"><span>Расстояние</span><b id="hR">—</b></div>
+  <div class="bar"><i id="hRbar"></i></div>
+  <div class="row"><span>До горизонта</span><b id="hKm">—</b></div>
+  <div class="row"><span>1 с на зонде = вдали</span><b id="hT">—</b></div>
+  <div class="row"><span>Скорость убегания</span><b id="hV">—</b></div>
+  <div class="row"><span>Растяжение тела 2 м</span><b id="hTid">—</b></div>
+</aside>
+
+<section class="card" id="card" aria-live="polite">
+  <div class="st" id="cSt"></div>
+  <h2 id="cH"></h2>
+  <p class="lead" id="cS"></p>
+  <div class="key"><b id="cK"></b><span id="cKc"></span></div>
+  <button class="more" id="bMore" type="button" aria-expanded="false">Подробнее ▾</button>
+  <div class="det" id="det">
+    <p id="cP"></p>
+    <div class="fm" id="cF"></div>
+    <div class="fx" id="cX"></div>
+  </div>
+</section>
+
+<nav class="dock">
+  <button class="play" id="bPlay" type="button" aria-label="Пауза">❚❚</button>
+  <div class="track" id="track"><div class="ln"></div><div class="pg" id="pg"></div></div>
+  <div class="spd" role="group" aria-label="Скорость полёта">
+    <button type="button" data-s="0.5">0,5×</button><button type="button" data-s="1" class="on">1×</button><button type="button" data-s="2">2×</button><button type="button" data-s="4">4×</button>
+  </div>
+</nav>
+
+<div class="ov" id="intro">
+  <div class="box">
+    <div class="eb">Интерактивная экспедиция · 10–11 класс</div>
+    <h1>Полёт к чёрной дыре</h1>
+    <p>Зонд стартует далеко от чёрной дыры и опускается до самого горизонта событий. Изображение не нарисовано, а рассчитано: для каждой точки экрана компьютер прослеживает путь луча света в искривлённом пространстве-времени.</p>
+    <ul>
+      <li>11 остановок с комментариями: радиус Шварцшильда, линзирование, аккреционный диск, эффект Доплера, замедление времени, фотонная сфера, приливные силы, горизонт</li>
+      <li>Приборы справа показывают, что происходит с временем и телом зонда</li>
+      <li>«Подробнее» на карточке — полное объяснение, полёт в это время на паузе</li>
+      <li>Пробел — пауза, ← → — остановки, F — во весь экран; в конце — короткий тест</li>
+    </ul>
+    <button class="go" id="bGo" type="button">▶ Начать полёт</button>
+    <button class="btn" id="bGoFS" type="button" style="margin-left:8px;min-height:44px">⤢ Во весь экран</button>
+    <div class="note">Включите звук: музыка создаётся прямо в браузере. Около 3 минут при скорости 1×.</div>
+  </div>
+</div>
+
+<div class="ov hide" id="fin">
+  <div class="box">
+    <div class="eb">Под горизонтом событий</div>
+    <h1>Обратной дороги нет</h1>
+    <p>Внутри горизонта все возможные пути в будущее ведут к центру — так же неизбежно, как мы движемся из сегодня в завтра. Что происходит в самом центре, в сингулярности, современная физика не знает: для этого нужна квантовая теория гравитации.</p>
+    <div class="eb" style="margin-top:20px">Проверь себя</div>
+    <div id="quiz"></div>
+    <div class="score" id="score"></div>
+    <div class="fin-acts">
+      <button class="go" id="bAgain" type="button">↻ Повторить полёт</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ================= этапы полёта (расстояния в радиусах Шварцшильда) ================= */
+var STAGES=[
+ {r:80, h:'Отправная точка', s:'Издалека чёрная дыра притягивает так же, как обычная звезда той же массы.', k:'80 <i>r</i><sub>s</sub>', kc:'до центра', p:'Зонд в 80 радиусах Шварцшильда от чёрной дыры. На таком расстоянии она притягивает так же, как обычная звезда той же массы — по закону всемирного тяготения.', f:'F = G<i>Mm</i>/<i>r</i><sup>2</sup>', x:'Чёрная дыра не «всасывает» всё вокруг: вдали от неё можно спокойно обращаться по орбите, как Земля вокруг Солнца.'},
+ {r:50, h:'Радиус Шварцшильда', s:'Сожмите Солнце в шар радиусом 3 км — и даже свет не сможет с него улететь.', k:'<i>r</i><sub>s</sub> = 2<i>GM</i>/<i>c</i><sup>2</sup>', kc:'', p:'Главный масштаб чёрной дыры — радиус Шварцшильда. Если сжать тело меньше этого размера, вторая космическая скорость на его поверхности превысит скорость света. Для 10 масс Солнца r<sub>s</sub> ≈ 30 км, для самого Солнца — около 3 км.', f:'<i>r</i><sub>s</sub> = 2<i>GM</i>/<i>c</i><sup>2</sup>', x:'Все расстояния на панели приборов даны в r<sub>s</sub> — так картина одинакова для дыры любой массы.'},
+ {r:30, h:'Гравитационное линзирование', s:'Гравитация искривляет путь света — звёзды расплываются в дуги.', k:'1919', kc:'Эддингтон впервые измерил изгиб света', p:'Свет движется по искривлённому пространству-времени, поэтому звёзды возле тёмного диска смещаются и вытягиваются в дуги. Звезда точно за дырой превратилась бы в кольцо — кольцо Эйнштейна.', f:'', x:'Отклонение света Солнцем измерил Артур Эддингтон во время затмения 1919 года — одно из первых подтверждений общей теории относительности.'},
+ {r:18, h:'Аккреционный диск', s:'Газ кружит вокруг дыры и раскаляется. Светится не дыра — светится газ.', k:'10<sup>7</sup> K', kc:'температура диска', p:'Газ не может упасть в дыру сразу: у него есть момент импульса. Он закручивается в плоский диск, трение разогревает его до миллионов кельвинов, и диск ярко светится. Сама дыра не излучает — светится вещество вокруг неё.', f:'', x:'Аккреция — самый эффективный известный источник энергии: в излучение переходит до 6–40 % энергии покоя mc² газа. У термоядерного синтеза — около 0,7 %.'},
+ {r:11, h:'Эффект Доплера', s:'Сторона диска, летящая к нам, ярче — так работает эффект Доплера.', k:'≈ 0,5 <i>c</i>', kc:'скорость газа', p:'Внутренние части диска мчатся со скоростью в десятки процентов от скорости света. Сторона, которая летит к нам, выглядит ярче и «голубее», удаляющаяся — тусклее и краснее. Это релятивистское усиление яркости.', f:'', x:'Поэтому диск на картинке несимметричен, хотя на самом деле он одинаков со всех сторон.'},
+ {r:6, h:'Тень и изогнутый диск', s:'Дуга над тенью — задняя сторона диска: её свет обогнул дыру.', k:'2,6 <i>r</i><sub>s</sub>', kc:'радиус тени', p:'Дуга над тёмным кругом — задняя часть диска: её свет огибает дыру и приходит к нам сверху. Тонкая дуга снизу — свет, обошедший дыру снизу. Тёмный круг — «тень» дыры, её радиус около 2,6 r<sub>s</sub>.', f:'', x:'В 2019 году Телескоп горизонта событий получил первое изображение тени — у чёрной дыры в галактике M87, в 2022-м — у Стрельца A* в центре нашей Галактики.'},
+ {r:3, h:'Последняя устойчивая орбита', s:'Ближе 3 r<sub>s</sub> устойчивых орбит нет — только падение по спирали.', k:'3 <i>r</i><sub>s</sub>', kc:'край диска', p:'На расстоянии 3 r<sub>s</sub> проходит последняя устойчивая круговая орбита. Ближе вещество уже не может кружиться — оно по спирали проваливается в дыру. Поэтому у аккреционного диска есть внутренний край.', f:'<i>r</i><sub>ISCO</sub> = 3<i>r</i><sub>s</sub>', x:'В ньютоновской механике устойчивые круговые орбиты возможны на любом расстоянии; это чисто релятивистский эффект.'},
+ {r:2, h:'Замедление времени', s:'Секунда на зонде — почти полторы секунды для далёкого наблюдателя.', k:'1 с → 1,4 с', kc:'', p:'Чем глубже в поле тяготения, тем медленнее идут часы по сравнению с часами далёкого наблюдателя. Посмотрите на приборы: секунда на зонде здесь — уже почти полторы секунды вдали.', f:'Δ<i>t</i><sub>вдали</sub> = Δ<i>t</i> / √(1 − <i>r</i><sub>s</sub>/<i>r</i>)', x:'Тот же эффект, только крошечный, учитывают в спутниках GPS: без поправки ошибка в координатах накапливалась бы примерно на 10 км в сутки.'},
+ {r:1.5, h:'Фотонная сфера', s:'Здесь свет может ходить по кругу вокруг дыры.', k:'1,5 <i>r</i><sub>s</sub>', kc:'орбита света', p:'На расстоянии 1,5 r<sub>s</sub> свет может двигаться по замкнутой круговой орбите вокруг дыры. Орбита неустойчива: фотон либо улетит, либо упадёт. Яркое тонкое кольцо вокруг тени — свет, сделавший возле дыры почти полный оборот.', f:'<i>r</i><sub>ф</sub> = 1,5 <i>r</i><sub>s</sub>', x:'Ниже фотонной сферы тень занимает уже больше половины неба. Камера отворачивается от дыры: всё остальное небо видно в светлой области над краем тени.'},
+ {r:1.15, h:'Приливные силы', s:'Ноги тянет сильнее головы — тело вытягивается в «спагетти».', k:'10<sup>7</sup> g', kc:'растяжение у дыры в 10 M☉', p:'Ноги притягиваются сильнее головы — тело растягивает вдоль направления на дыру и сжимает с боков («спагеттификация»). У дыры в 10 Солнц человека разорвало бы ещё за тысячи километров до горизонта. Переключите массу на Стрелец A*: там приливы на горизонте ничтожны.', f:'Δ<i>a</i> ≈ 2<i>GML</i>/<i>r</i><sup>3</sup>', x:'Парадокс: чем массивнее чёрная дыра, тем мягче приливы на её горизонте — радиус растёт пропорционально массе, а приливная сила убывает как 1/r³.'},
+ {r:1.02, h:'Горизонт событий', s:'Граница, из-за которой не вырвется даже свет.', k:'<i>v</i> = <i>c</i>', kc:'скорость убегания', p:'Горизонт — граница, из-под которой не выходит даже свет. Падающий зонд ничего особенного в этот момент не заметит. Но далёкий наблюдатель никогда не увидит пересечения: сигналы зонда приходят всё реже, краснеют и гаснут.', f:'<i>r</i> = <i>r</i><sub>s</sub>', x:'Для зависшего у горизонта зонда почти всё небо — чёрная тень, а вся Вселенная сжимается в маленький яркий круг прямо над ним.'}
+];
+var END_R=1.0006, SEG=16;
+var N=STAGES.length, TOTAL=N*SEG;
+
+/* ================= приборы ================= */
+var MASSES=[
+  {lbl:'10 M☉', name:'звёздная чёрная дыра, 10 масс Солнца', GM:1.32712e21},
+  {lbl:'Стрелец A*', name:'Стрелец A*, 4,3 млн масс Солнца', GM:1.32712e20*4.3e6}
+];
+var mi=0, C=2.99792458e8;
+function rsOf(m){ return 2*m.GM/(C*C); }
+function fmt(x,dig){ return x.toFixed(dig).replace('.',','); }
+function sci(x){
+  if(x===0) return '0';
+  var e=Math.floor(Math.log10(Math.abs(x))), m=x/Math.pow(10,e);
+  if(e>=-2&&e<=4) return fmt(x, x<10?(x<1?3:2):0).replace(/,?0+$/,function(s){ return s.indexOf(',')===0?'':s; });
+  return fmt(m,1)+'·10<sup>'+String(e).replace('-','−')+'</sup>';
+}
+function dist(m){ if(m<1000) return sci(m)+' <small>м</small>'; if(m<1e9) return sci(m/1000)+' <small>км</small>'; return sci(m/1.496e11)+' <small>а. е.</small>'; }
+function hud(r){
+  var M=MASSES[mi], rs=rsOf(M);
+  $('hR').innerHTML=fmt(r,r<2?3:(r<10?2:1))+' <small>r<sub>s</sub></small>';
+  $('hRbar').style.width=(100*(1-Math.log(r)/Math.log(80))).toFixed(1)+'%';
+  $('hKm').innerHTML=dist((r-1)*rs);
+  var k=1/Math.sqrt(Math.max(1-1/r,1e-12));
+  $('hT').innerHTML=(k<1000?fmt(k,k<10?3:1):sci(k))+' <small>с</small>';
+  $('hV').innerHTML=fmt(100*Math.min(1,Math.sqrt(1/r)),1)+' <small>% c</small>';
+  var da=2*M.GM*2/Math.pow(r*rs,3);
+  $('hTid').innerHTML=sci(da/9.81)+' <small>g</small>';
+}
+
+/* ================= WebGL: трассировка лучей в метрике Шварцшильда ================= */
+var cv=$('sky'), gl=cv.getContext('webgl',{antialias:false,preserveDrawingBuffer:true});
+var VS='attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+var FS=[
+'precision highp float;',
+'uniform vec2 uRes;uniform vec3 uCam,uF,uR,uU;uniform float uTime,uFov,uEsc,uStretch;',
+'float hash(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}',
+'float noise(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);',
+' return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),',
+'            mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z);}',
+'vec3 stars(vec3 d){',
+' vec3 col=vec3(0.);',
+' for(int l=0;l<3;l++){float sc=55.+float(l)*60.;vec3 p=d*sc;vec3 c=floor(p);float h=hash(c+float(l)*17.3);',
+'  if(h>.9){vec3 sp=c+.5+.4*(vec3(hash(c+1.3),hash(c+2.7),hash(c+5.1))-.5);float dd=length(p-sp);',
+'   float b=smoothstep(.16,0.,dd)*pow((h-.9)*10.,3.)*1.6;vec3 tint=mix(vec3(1.,.78,.58),vec3(.72,.82,1.),hash(c+9.1));col+=tint*b;}}',
+' vec3 n=normalize(vec3(.25,1.,.35));float band=exp(-pow(dot(d,n)*3.2,2.));',
+' float cl=noise(d*5.)*.55+noise(d*11.)*.3+noise(d*23.)*.15;',
+' col+=vec3(.42,.36,.55)*band*cl*cl*.55+vec3(.5,.32,.22)*band*pow(noise(d*7.+3.),3.)*.4;',
+' return col;}',
+'vec3 bb(float x){x=max(x,0.);',
+' vec3 a=vec3(.35,.04,0.),b=vec3(1.,.36,.08),c=vec3(1.,.78,.5),d=vec3(.92,.95,1.),e=vec3(.62,.75,1.25);',
+' if(x<.5)return mix(a,b,x/.5);if(x<1.)return mix(b,c,(x-.5)/.5);if(x<1.6)return mix(c,d,(x-1.)/.6);return mix(d,e,clamp((x-1.6)/1.,0.,1.));}',
+'void main(){',
+' vec2 uv=(gl_FragCoord.xy-.5*uRes)/uRes.y;uv.y*=1./(1.+uStretch);uv.x*=1.+uStretch*.5;',
+' vec3 v=normalize(uF+uv.x*uFov*uR+uv.y*uFov*uU);vec3 p=uCam;',
+' vec3 hc=cross(p,v);float h2=dot(hc,hc);',
+' vec3 col=vec3(0.);float al=0.;bool cap=false;float rc0=length(uCam);',
+' for(int i=0;i<320;i++){',
+'  float r=length(p);',
+'  if(r<1.){cap=true;break;}',
+'  if(r>uEsc&&dot(p,v)>0.)break;',
+'  float dt=clamp(.06*r*r/(r+1.5),.012,2.);',
+'  vec3 a=-1.5*h2*p/pow(r,5.);',
+'  vec3 v2=v+a*dt;vec3 pn=p+v2*dt;',
+'  if(p.y*pn.y<0.){',
+'   float f=p.y/(p.y-pn.y);vec3 c=mix(p,pn,f);float rc=length(c.xz);',
+'   if(rc>2.9&&rc<17.){',
+'    float om=1.3*pow(rc,-1.5);float ca=cos(uTime*om),sa=sin(uTime*om);vec2 q=vec2(ca*c.x-sa*c.z,sa*c.x+ca*c.z);',
+'    float tx=noise(vec3(q*1.6,rc*1.3))*.6+noise(vec3(q*4.,rc*3.))*.3+noise(vec3(q*9.,1.))*.1;',
+'    float ring=.88+.12*sin(rc*5.3+tx*6.);',
+'    float dens=smoothstep(2.9,3.6,rc)*smoothstep(17.,8.,rc)*(.35+.9*tx)*ring;',
+'    float temp=pow(rc/3.,-.75)*pow(max(1.-sqrt(3./rc),0.),.25)*2.1;',
+'    float be=sqrt(.5/(rc-1.));vec3 vd=normalize(vec3(-c.z,0.,c.x));float ga=1./sqrt(1.-be*be);',
+'    float D=1./(ga*(1.-be*dot(vd,-normalize(v2))));',
+'    float g=sqrt(1.-1./rc)/sqrt(max(1.-1./rc0,.0004));',
+'    float sh=clamp(D*g,0.,6.);',
+'    vec3 e=bb(temp*sh)*pow(sh,3.)*dens*1.5;',
+'    col+=(1.-al)*e;al+=(1.-al)*clamp(dens*.8,0.,.95);',
+'   }}',
+'  p=pn;v=v2;',
+' }',
+' if(!cap)col+=(1.-al)*stars(normalize(v))*1.1;',
+' col=1.-exp(-col*1.25);col=pow(col,vec3(.9));',
+' gl_FragColor=vec4(col,1.);}'
+].join('\n');
+function sh(t,s){ var o=gl.createShader(t); gl.shaderSource(o,s); gl.compileShader(o); if(!gl.getShaderParameter(o,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; }
+var prog, U={};
+function initGL(){
+  prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS)); gl.linkProgram(prog); gl.useProgram(prog);
+  var b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+  var l=gl.getAttribLocation(prog,'p'); gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,2,gl.FLOAT,false,0,0);
+  ['uRes','uCam','uF','uR','uU','uTime','uFov','uEsc','uStretch'].forEach(function(n){ U[n]=gl.getUniformLocation(prog,n); });
+}
+var scale=0.6;
+function resize(){
+  var d=Math.min(window.devicePixelRatio||1,2)*scale;
+  cv.width=Math.max(2,Math.round(innerWidth*d)); cv.height=Math.max(2,Math.round(innerHeight*d));
+  if(gl) gl.viewport(0,0,cv.width,cv.height);
+}
+
+/* ================= траектория ================= */
+function ease(t){ return t*t*(3-2*t); }
+function rAt(T){              // расстояние в момент T полёта (лог-интерполяция между остановками)
+  if(T<=0) return STAGES[0].r;
+  var i=Math.min(N-1,Math.floor(T/SEG)), u=(T-i*SEG)/SEG; u=Math.min(1,u); u=.35*u+.65*ease(u);
+  var a=STAGES[i].r, b=i+1<N?STAGES[i+1].r:END_R;
+  return Math.exp(Math.log(a)+(Math.log(b)-Math.log(a))*u);
+}
+function camera(T,r){
+  var close=1-Math.log(r)/Math.log(80);
+  var el=.11+.22*close*close, az=.6+T*.012;
+  var cam=[r*Math.cos(el)*Math.cos(az), r*Math.sin(el), r*Math.cos(el)*Math.sin(az)];
+  var f=norm([-cam[0],-cam[1],-cam[2]]), rt=norm(cross(f,[0,1,0])), up=cross(rt,f);
+  // угловой радиус тени для неподвижного наблюдателя: sin α = (3√3/2)·√(1 − 1/r)/r
+  var sa=Math.min(1,2.598*Math.sqrt(Math.max(0,1-1/r))/r), al=r>1.5?Math.asin(sa):Math.PI-Math.asin(sa);
+  var half=Math.max(.42,Math.min(.72,al/.62)), kk=-.3+.92*Math.max(0,Math.min(1,(r-1.5)/4.5)), be=Math.max(0,al-kk*half);   // шире обзор, затем отворачиваемся, чтобы край тени оставался в кадре
+  var cb=Math.cos(be), sb=Math.sin(be);
+  var f2=[f[0]*cb+up[0]*sb,f[1]*cb+up[1]*sb,f[2]*cb+up[2]*sb], u2=[up[0]*cb-f[0]*sb,up[1]*cb-f[1]*sb,up[2]*cb-f[2]*sb];
+  return {cam:cam,f:f2,r:rt,u:u2,fov:2*Math.tan(half)};
+}
+function norm(a){ var l=Math.hypot(a[0],a[1],a[2]); return [a[0]/l,a[1]/l,a[2]/l]; }
+function cross(a,b){ return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+
+/* ================= музыка (Web Audio, без внешних файлов) ================= */
+var AU=null, musicOn=true;
+function mtof(m){ return 440*Math.pow(2,(m-69)/12); }
+function startAudio(){
+  if(AU) { audioRun(); return; }
+  var Ctx=window.AudioContext||window.webkitAudioContext; if(!Ctx) return;
+  var ctx=new Ctx(), master=ctx.createGain(); master.gain.value=0;
+  var comp=ctx.createDynamicsCompressor(); master.connect(comp); comp.connect(ctx.destination);
+  var len=ctx.sampleRate*5, ir=ctx.createBuffer(2,len,ctx.sampleRate);
+  for(var ch=0;ch<2;ch++){ var d=ir.getChannelData(ch); for(var i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.6); }
+  var rev=ctx.createConvolver(); rev.buffer=ir; var wet=ctx.createGain(); wet.gain.value=.75; rev.connect(wet); wet.connect(master);
+  var dry=ctx.createGain(); dry.gain.value=.55; dry.connect(master);
+  var lp=ctx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=1600; lp.Q.value=.4; lp.connect(dry); lp.connect(rev);
+  // гул гравитации: низкая синусоида + отфильтрованный шум
+  var sub=ctx.createOscillator(); sub.type='sine'; sub.frequency.value=55; var subG=ctx.createGain(); subG.gain.value=0; sub.connect(subG); subG.connect(master); sub.start();
+  var nb=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate), nd=nb.getChannelData(0); for(var k=0;k<nd.length;k++) nd[k]=Math.random()*2-1;
+  var ns=ctx.createBufferSource(); ns.buffer=nb; ns.loop=true; var bp=ctx.createBiquadFilter(); bp.type='lowpass'; bp.frequency.value=110;
+  var nG=ctx.createGain(); nG.gain.value=0; ns.connect(bp); bp.connect(nG); nG.connect(master); ns.start();
+  master.gain.setTargetAtTime(musicOn?.8:0, ctx.currentTime, 1.2);
+  AU={ctx:ctx,master:master,lp:lp,rev:rev,sub:sub,subG:subG,nG:nG,k:0,b:0,dil:1,prox:0,end:false};
+  audioSeek(); setInterval(sched,150);
+}
+var CHORDS=[[50,57,62,65,69],[46,53,58,62,65],[43,50,55,58,62,67],[45,52,57,61,64]];   // Dm9 – B♭maj7 – Gm9 – A
+var PENTA=[74,77,79,81,84,86], CH=9;          // аккорд каждые 9 с времени полёта
+// «колокольчики» заранее расставлены по шкале полёта — при перемотке звучат те же ноты в тех же местах
+var BELLS=(function(){ var a=7, rnd=function(){ a=(a*16807)%2147483647; return a/2147483647; }, out=[], t=3;
+  while(t<TOTAL){ out.push({t:t, m:PENTA[Math.floor(rnd()*PENTA.length)]-(rnd()<.3?12:0)}); t+=1.6+rnd()*2.8; } return out; })();
+var voices=[];
+function voice(g,oscs,end){ voices.push({g:g,o:oscs,end:end}); }
+function pad(m,t,dur,gain,fadeIn){
+  var c=AU.ctx, g=c.createGain(), at=Math.min(fadeIn,dur*.4), rel=Math.min(4,dur*.4);
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(gain,t+at); g.gain.setValueAtTime(gain,t+dur-rel); g.gain.linearRampToValueAtTime(0,t+dur+1);
+  g.connect(AU.lp);
+  var os=[-7,7].map(function(cents,j){ var o=c.createOscillator(); o.type=j?'sawtooth':'triangle'; o.frequency.value=mtof(m)*AU.dil; o.detune.value=cents; o.connect(g); o.start(t); o.stop(t+dur+1.2); return o; });
+  voice(g,os,t+dur+1.2);
+}
+function bell(m,t){
+  var c=AU.ctx, o=c.createOscillator(), g=c.createGain(); o.type='sine'; o.frequency.value=mtof(m)*AU.dil;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.045,t+.02); g.gain.exponentialRampToValueAtTime(.0005,t+3.5);
+  o.connect(g); g.connect(AU.rev); o.start(t); o.stop(t+3.6);
+  voice(g,[o],t+3.6);
+}
+function chordAt(k,t,dur,fadeIn){ if(AU.end) return; CHORDS[k%CHORDS.length].forEach(function(m,i){ pad(m,t,dur,i===0?.05:.028,fadeIn); }); }
+// аудиовремя события, стоящего на шкале полёта в момент te
+function aTime(te){ return AU.ctx.currentTime+Math.max(0,(te-T)/speed); }
+function sched(){
+  if(!AU||!playing||ended) return;
+  var ahead=T+1.2*speed;
+  while(AU.k*CH<ahead){ chordAt(AU.k, aTime(AU.k*CH), (CH+1)/speed, 3/Math.sqrt(speed)); AU.k++; }
+  while(AU.b<BELLS.length&&BELLS[AU.b].t<ahead){ if(AU.prox<.93&&!AU.end) bell(BELLS[AU.b].m,aTime(BELLS[AU.b].t)); AU.b++; }
+  var now=AU.ctx.currentTime; voices=voices.filter(function(v){ return v.end>now; });
+}
+// перемотка: гасим звучащие ноты и сразу запускаем аккорд, который должен звучать в новой точке
+function audioSeek(){
+  if(!AU) return;
+  var c=AU.ctx, now=c.currentTime;
+  voices.forEach(function(v){ try{ v.g.gain.cancelScheduledValues(now); v.g.gain.setTargetAtTime(0,now,.08); v.o.forEach(function(o){ o.stop(now+.5); }); }catch(e){} });
+  voices=[];
+  var k=Math.floor(T/CH); AU.k=k+1; AU.b=0; while(AU.b<BELLS.length&&BELLS[AU.b].t<T) AU.b++;
+  if(T<TOTAL-.5) chordAt(k, now+.05, Math.max(1.5,((k+1)*CH+1-T)/speed), .6);
+}
+function audioRun(){             // звук идёт, только пока идёт полёт (или на финальном экране)
+  if(!AU) return;
+  if(playing||ended){ if(AU.ctx.state!=='running') AU.ctx.resume(); }
+  else if(AU.ctx.state==='running') AU.ctx.suspend();
+}
+function audioProx(r,ended,jump){
+  if(!AU) return;
+  var t=AU.ctx.currentTime, tc=jump?.05:.8, p=Math.max(0,Math.min(1,1-Math.log(r)/Math.log(80)));
+  AU.prox=p; AU.end=ended;
+  AU.dil=Math.pow(Math.max(1-1/r,.02),.12);                  // «замедление времени»: новые ноты звучат ниже
+  AU.lp.frequency.setTargetAtTime(ended?220:1700-1250*p*p,t,tc);
+  AU.sub.frequency.setTargetAtTime(55*Math.pow(Math.max(1-1/r,.05),.25),t,tc);
+  AU.subG.gain.setTargetAtTime(ended?.05:.03+.2*p*p*p,t,tc);
+  AU.nG.gain.setTargetAtTime(ended?0:.25*Math.pow(p,4),t,tc);
+}
+function setMusic(on){
+  musicOn=on; $('bMusic').setAttribute('aria-pressed',on);
+  if(AU) AU.master.gain.setTargetAtTime(on?.8:0,AU.ctx.currentTime,.4);
+}
+
+/* ================= интерфейс ================= */
+function $(id){ return document.getElementById(id); }
+var T=0, speed=1, playing=false, started=false, ended=false, shown=-1, showText=true;
+var track=$('track');
+STAGES.forEach(function(s,i){
+  var k=document.createElement('div'); k.className='tk'; k.style.left=(100*i*SEG/TOTAL)+'%'; k.dataset.t=(i+1)+'. '+s.h; k.dataset.i=i; track.appendChild(k);
+});
+function stageIdx(T){ return Math.max(0,Math.min(N-1,Math.floor(T/SEG+1e-6))); }
+function showStage(i){
+  if(i===shown) return; shown=i;
+  var card=$('card'), s=STAGES[i];
+  card.classList.add('fade');
+  setTimeout(function(){
+    $('cSt').textContent='Остановка '+(i+1)+' из '+N+' · '+(s.r>=10?s.r:String(s.r).replace('.',','))+' rₛ';
+    $('cH').textContent=s.h; $('cS').innerHTML=s.s; $('cK').innerHTML=s.k; $('cKc').innerHTML=s.kc; $('cK').parentNode.classList.toggle('none',!s.k);
+    card.classList.remove('in'); void card.offsetWidth; card.classList.add('in'); setOpen(false);
+    $('cP').innerHTML=s.p; $('cF').innerHTML=s.f; $('cF').style.display=s.f?'':'none';
+    $('cX').innerHTML=s.x; $('cX').style.display=s.x?'':'none';
+    if(showText) card.classList.remove('fade');
+  },shown===0&&!started?0:350);
+  [].forEach.call(track.querySelectorAll('.tk'),function(k){ k.classList.toggle('on',+k.dataset.i<=i); });
+}
+var resumeAfter=false;
+function setOpen(o){
+  var card=$('card'); if(card.classList.contains('open')===o) return;
+  card.classList.toggle('open',o); $('bMore').setAttribute('aria-expanded',o); $('bMore').textContent=o?'Свернуть ▴':'Подробнее ▾';
+  if(o){ resumeAfter=playing; if(playing) setPlaying(false); }
+  else if(resumeAfter){ resumeAfter=false; if(started&&!ended) setPlaying(true); }
+}
+function setPlaying(p){ playing=p; audioRun(); $('bPlay').textContent=p?'❚❚':'▶'; $('bPlay').setAttribute('aria-label',p?'Пауза':'Продолжить'); }
+function seek(t){ T=Math.max(0,Math.min(TOTAL-.01,t)); if(ended){ ended=false; $('fin').classList.add('hide'); } if(AU){ var r=rAt(T); audioProx(r,false,true); audioSeek(); audioRun(); } }
+function begin(){
+  $('intro').classList.add('hide'); started=true; setPlaying(true);
+  try{ startAudio(); }catch(e){}
+}
+$('bGo').onclick=begin;
+$('bGoFS').onclick=function(){ toggleFS(); begin(); };
+$('bMore').onclick=function(){ setOpen(!$('card').classList.contains('open')); };
+// полноэкранный режим
+function isFS(){ return !!(document.fullscreenElement||document.webkitFullscreenElement); }
+function toggleFS(){
+  var el=document.documentElement;
+  try{
+    if(!isFS()){ (el.requestFullscreen||el.webkitRequestFullscreen).call(el); }
+    else { (document.exitFullscreen||document.webkitExitFullscreen).call(document); }
+  }catch(e){ $('bFS').title='Полноэкранный режим недоступен в этом окне'; }
+}
+function fsLabel(){ $('bFS').innerHTML=isFS()?'⤡<span class="t"> Выйти</span>':'⤢<span class="t"> Во весь экран</span>'; setTimeout(resize,100); }
+$('bFS').onclick=toggleFS;
+document.addEventListener('fullscreenchange',fsLabel); document.addEventListener('webkitfullscreenchange',fsLabel);
+$('bPlay').onclick=function(){ if(!started){ begin(); return; } if($('card').classList.contains('open')){ resumeAfter=false; $('card').classList.remove('open'); $('bMore').setAttribute('aria-expanded',false); $('bMore').textContent='Подробнее ▾'; } if(ended){ seek(0); } setPlaying(!playing); };
+$('bMusic').onclick=function(){ if(!AU&&started) startAudio(); setMusic(!musicOn); };
+$('bText').onclick=function(){ showText=!showText; this.setAttribute('aria-pressed',showText); $('card').classList.toggle('fade',!showText); };
+$('bMass').onclick=function(){ mi=(mi+1)%MASSES.length; $('massLbl').textContent=MASSES[mi].lbl; this.title=MASSES[mi].name; hud(rAt(T)); };
+[].forEach.call(document.querySelectorAll('.spd button'),function(b){ b.onclick=function(){ speed=+b.dataset.s; [].forEach.call(document.querySelectorAll('.spd button'),function(x){ x.classList.toggle('on',x===b); }); }; });
+track.onclick=function(e){
+  var k=e.target.closest('.tk'); if(k){ seek(+k.dataset.i*SEG+.01); }
+  else { var rc=track.getBoundingClientRect(); seek((e.clientX-rc.left)/rc.width*TOTAL); }
+  if(!started) begin();
+};
+document.addEventListener('keydown',function(e){
+  if(e.code==='Space'){ e.preventDefault(); if($('card').classList.contains('open')) setOpen(false); else $('bPlay').click(); }
+  if(e.code==='KeyF'){ toggleFS(); }
+  if(e.key==='ArrowRight'){ seek((stageIdx(T)+1)*SEG+.01); if(!started) begin(); }
+  if(e.key==='ArrowLeft'){ seek((stageIdx(T)-(T-stageIdx(T)*SEG<2?1:0))*SEG+.01); }
+});
+$('bAgain').onclick=function(){ seek(0); shown=-1; $('black').style.opacity=0; setPlaying(true); buildQuiz(); };
+
+/* ================= тест ================= */
+var QUIZ=[
+ {q:'Чему равен радиус Шварцшильда?', o:['2GM/c²','GM/c²','c²/(2GM)','√(2GM)'], a:0, e:'rₛ = 2GM/c²: при таком радиусе вторая космическая скорость равна скорости света.'},
+ {q:'Почему одна сторона аккреционного диска ярче другой?', o:['Она ближе к наблюдателю','Вещество там движется к нам — релятивистский эффект Доплера','Там больше газа','Она горячее из-за трения'], a:1, e:'Излучение источника, летящего к наблюдателю со скоростью, сравнимой с c, усиливается и сдвигается в синюю сторону.'},
+ {q:'Где проходит последняя устойчивая круговая орбита?', o:['1 rₛ','1,5 rₛ','3 rₛ','10 rₛ'], a:2, e:'3 rₛ — внутренний край диска. На 1,5 rₛ — фотонная сфера, где по кругу может двигаться только свет.'},
+ {q:'Что увидит далёкий наблюдатель, следя за падающим зондом?', o:['Зонд мгновенно исчезнет','Зонд ускорится и станет голубым','Зонд будет замедляться, краснеть и гаснуть у горизонта','Зонд отразится от горизонта'], a:2, e:'Из-за гравитационного замедления времени пересечение горизонта далёкий наблюдатель не увидит никогда.'},
+ {q:'У какой чёрной дыры приливные силы на горизонте слабее?', o:['У звёздной (10 масс Солнца)','У сверхмассивной (миллионы масс Солнца)','Одинаковы у всех'], a:1, e:'Δa ∝ M/r³, а rₛ ∝ M, значит на горизонте Δa ∝ 1/M²: чем массивнее дыра, тем мягче приливы.'}
+];
+var score=0, answered=0;
+function buildQuiz(){
+  score=0; answered=0; $('score').textContent=''; var box=$('quiz'); box.innerHTML='';
+  QUIZ.forEach(function(it,qi){
+    var d=document.createElement('div'); d.className='q';
+    d.innerHTML='<div class="qt">'+(qi+1)+'. '+it.q+'</div><div class="op"></div><div class="ex">'+it.e+'</div>';
+    it.o.forEach(function(t,oi){
+      var b=document.createElement('button'); b.type='button'; b.textContent=t;
+      b.onclick=function(){
+        [].forEach.call(d.querySelectorAll('button'),function(x,xi){ x.disabled=true; if(xi===it.a) x.classList.add('ok'); });
+        if(oi!==it.a) b.classList.add('no'); else score++;
+        d.classList.add('done'); answered++;
+        if(answered===QUIZ.length) $('score').textContent='Результат: '+score+' из '+QUIZ.length+(score===QUIZ.length?' — отлично!':score>=3?' — хорошо':' — пролетите ещё раз и обратите внимание на комментарии');
+      };
+      d.querySelector('.op').appendChild(b);
+    });
+    box.appendChild(d);
+  });
+}
+buildQuiz();
+
+/* ================= кадр ================= */
+var last=performance.now(), slowF=0, fastF=0, glOK=true;
+try{ initGL(); }catch(e){ glOK=false; console.error(e); }
+resize(); window.addEventListener('resize',resize);
+if(!gl||!glOK){ $('cS').textContent='Браузер не поддерживает WebGL — визуализация недоступна, но комментарии и приборы работают.'; }
+
+function frame(now){
+  var dt=Math.min(.1,(now-last)/1000); last=now;
+  if(playing&&!ended){ T+=dt*speed; if(T>=TOTAL){ T=TOTAL; ended=true; setPlaying(false); } }
+  var r=rAt(Math.min(T,TOTAL-.001)), cam=camera(T,r);
+  showStage(stageIdx(Math.min(T,TOTAL-.01)));
+  hud(ended?END_R:r);
+  $('pg').style.width=(100*T/TOTAL)+'%';
+  // затемнение у горизонта и финал
+  var lastSeg=(N-1)*SEG, fade=T>lastSeg+SEG*.55 ? Math.min(1,(T-lastSeg-SEG*.55)/(SEG*.4)) : 0;
+  $('black').style.opacity=fade;
+  if(ended&&$('fin').classList.contains('hide')) $('fin').classList.remove('hide');
+  if(started) audioProx(r,ended);
+  if(gl&&glOK&&fade<1){
+    var stretch=r<1.4?.18*Math.pow((1.4-r)/.4,2):0;
+    gl.uniform2f(U.uRes,cv.width,cv.height); gl.uniform3fv(U.uCam,cam.cam); gl.uniform3fv(U.uF,cam.f); gl.uniform3fv(U.uR,cam.r); gl.uniform3fv(U.uU,cam.u);
+    gl.uniform1f(U.uTime,now/1000); gl.uniform1f(U.uFov,cam.fov); gl.uniform1f(U.uEsc,Math.max(40,r*1.3)); gl.uniform1f(U.uStretch,stretch);
+    gl.drawArrays(gl.TRIANGLES,0,3);
+    // подстройка разрешения под мощность компьютера
+    if(dt>.045){ if(++slowF>20&&scale>.3){ scale=Math.max(.3,scale-.1); resize(); slowF=0; } } else slowF=0;
+    if(dt<.02){ if(++fastF>90&&scale<1){ scale=Math.min(1,scale+.1); resize(); fastF=0; } } else fastF=0;
+  }
+  requestAnimationFrame(frame);
+}
+// ?at=секунды — открыть сразу нужный момент (для проверки и демонстрации)
+var m=/[?&]at=([\d.]+)/.exec(location.search);
+if(m){ T=+m[1]; $('intro').classList.add('hide'); started=false; }
+showStage(stageIdx(T)); hud(rAt(T));
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
